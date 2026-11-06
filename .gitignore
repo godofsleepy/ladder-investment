@@ -5,3 +5,5 @@ refresh.log
 .next/
 tsconfig.tsbuildinfo
 next-env.d.ts
+ladder_key
+ladder_key.pub
