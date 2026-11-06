@@ -1,0 +1,21 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: ladder-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ladder
+      POSTGRES_DB: ladder
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - ladder-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ladder -d ladder"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  ladder-data:

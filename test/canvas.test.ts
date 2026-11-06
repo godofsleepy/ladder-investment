@@ -1,0 +1,290 @@
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { createUser, deleteUser, type User } from "../src/auth.js";
+import { addDays, today } from "../src/dates.js";
+import { closePool, getPool, withUser } from "../src/db.js";
+import { migrate } from "../src/migrate.js";
+import { Decimal } from "../src/money.js";
+import { assetOptions, getGrowth, getPositions, getPriceStatus, previewTrade } from "../src/overview.js";
+import { fillHistory } from "../src/prices/history.js";
+import { savePrice } from "../src/prices/store.js";
+import { createServer } from "../src/tools.js";
+
+const day = today();
+let history: Record<string, Array<[string, number]>> = {};
+
+/** A Yahoo chart answer built from dates and closes, in UTC. */
+function chart(symbol: string) {
+  const rows = history[symbol] ?? [];
+  return Response.json({
+    chart: {
+      result: [
+        {
+          meta: { currency: "USD", regularMarketPrice: rows.at(-1)?.[1] ?? 1, gmtoffset: 0 },
+          timestamp: rows.map(([d]) => Date.parse(`${d}T12:00:00Z`) / 1000),
+          indicators: { quote: [{ close: rows.map(([, c]) => c) }] },
+        },
+      ],
+    },
+  });
+}
+
+let user: User;
+let other: User;
+let mcp: Client;
+
+async function connect(id: number) {
+  const client = new Client({ name: "test", version: "1" });
+  const [a, b] = InMemoryTransport.createLinkedPair();
+  await createServer({ userId: id, access: "rw" }).connect(a);
+  await client.connect(b);
+  return client;
+}
+
+// biome-ignore lint: tool results are loose JSON
+async function call(client: Client, name: string, args: Record<string, unknown> = {}): Promise<any> {
+  const res = (await client.callTool({ name, arguments: args })) as { content: Array<{ text: string }>; isError?: boolean };
+  const text = res.content[0]?.text ?? "";
+  if (res.isError) throw new Error(`${name}: ${text}`);
+  return JSON.parse(text);
+}
+
+beforeAll(async () => {
+  vi.stubGlobal("fetch", vi.fn(async (input: string | URL) => {
+    const url = new URL(String(input));
+    if (url.hostname === "api.coingecko.com") return Response.json({});
+    return chart(decodeURIComponent(url.pathname.split("/").pop() as string));
+  }));
+  await migrate();
+  user = await createUser(getPool(), { email: "canvas@example.com", name: "Canvas", password: "correct horse" });
+  other = await createUser(getPool(), { email: "canvas2@example.com", name: "Other", password: "correct horse" });
+  mcp = await connect(user.id);
+});
+
+afterAll(async () => {
+  await mcp.close();
+  await deleteUser(getPool(), user.id);
+  await deleteUser(getPool(), other.id);
+  await closePool();
+  vi.unstubAllGlobals();
+});
+
+const read = <T>(fn: (db: Parameters<Parameters<typeof withUser>[1]>[0]) => Promise<T>) =>
+  withUser(user.id, fn, { readOnly: true });
+
+describe("position status", () => {
+  beforeAll(async () => {
+    await call(mcp, "log_trade", { symbol: "BBRI.JK", type: "buy", qty: 100, price: 4000 });
+    await call(mcp, "log_trade", { symbol: "BBCA.JK", type: "buy", qty: 100, price: 8000 });
+    await call(mcp, "log_trade", { symbol: "TLKM.JK", type: "buy", qty: 100, price: 3000 });
+    await call(mcp, "log_trade", { symbol: "ASII.JK", type: "buy", qty: 100, price: 5000 });
+    await call(mcp, "set_price", { symbol: "BBRI.JK", price: 3900 });
+    await call(mcp, "set_price", { symbol: "BBCA.JK", price: 9000 });
+    await call(mcp, "set_price", { symbol: "TLKM.JK", price: 3000 });
+    await call(mcp, "set_price", { symbol: "ASII.JK", price: 5000 });
+  });
+
+  const state = async (symbol: string) => {
+    const { positions } = await read((db) => getPositions(db));
+    return positions.find((p) => p.symbol === symbol);
+  };
+
+  it("marks a position with no thesis", async () => {
+    expect(await state("TLKM.JK")).toMatchObject({ state: "missing", reason: "none" });
+  });
+
+  it("alerts below the invalidation price", async () => {
+    await call(mcp, "save_thesis", { symbol: "BBRI.JK", title: "Micro recovers", why: "", kill_criteria: "NPL up", horizon: "1y", conviction: 2, kill_price: 4000, add_rule: "No adds", trim_rule: "Above Rp5.200", review_every: "monthly" });
+    expect(await state("BBRI.JK")).toMatchObject({ state: "alert", reason: "kill", kill_price: "4000" });
+  });
+
+  it("alerts when a position is over its weight cap", async () => {
+    await call(mcp, "save_thesis", { symbol: "BBCA.JK", title: "Best bank", why: "", kill_criteria: "NPL", horizon: "1y", conviction: 5, max_weight_pct: 10 });
+    expect(await state("BBCA.JK")).toMatchObject({ state: "alert", reason: "cap", cap_pct: 10 });
+    const alerts = await call(mcp, "check_alerts");
+    expect(alerts.overweight_positions[0]).toMatchObject({ symbol: "BBCA.JK", cap_pct: 10 });
+  });
+
+  it("marks a passed review date, and is on track otherwise", async () => {
+    await call(mcp, "save_thesis", { symbol: "ASII.JK", title: "Dividends", why: "", kill_criteria: "x", horizon: "1y", conviction: 3 });
+    expect(await state("ASII.JK")).toMatchObject({ state: "ok", reason: "next" });
+    await getPool().query("update theses set next_review_at = $1 where user_id = $2 and title = 'Dividends'", [addDays(day, -1), user.id]);
+    expect(await state("ASII.JK")).toMatchObject({ state: "review", reason: "date" });
+  });
+
+  it("uses the thesis cadence for the next review", async () => {
+    const t = (await call(mcp, "get_theses", { symbol: "BBRI.JK" }))[0];
+    expect(t).toMatchObject({ review_every: "monthly", add_rule: "No adds", trim_rule: "Above Rp5.200" });
+    const res = await call(mcp, "review_thesis", { thesis_id: t.id, still_valid: true, note: "Holds" });
+    expect(res.thesis.last_reviewed).toBe(day);
+    expect(res.next_review > addDays(day, 27) && res.next_review < addDays(day, 32)).toBe(true);
+  });
+});
+
+describe("macro views", () => {
+  it("links holdings and works out real exposure", async () => {
+    const view = await call(mcp, "save_macro_view", {
+      short_name: "Rate cuts",
+      area: "Indonesia",
+      conviction: "Medium",
+      view: "BI rate cuts lift Indonesian bank earnings.",
+      wrong_if: "BI holds rates through mid-2027.",
+      signals: [{ kind: "for", text: "BBCA NPL steady" }, { kind: "against", text: "BBRI micro NPL up" }],
+      symbols: ["BBRI.JK", "BBCA"],
+    });
+    expect(view.symbols.sort()).toEqual(["BBCA.JK", "BBRI.JK"]);
+    expect(view.exposure_idr).toBe("1290000.00");
+    expect(view.state).toBe("holding");
+    expect(view.signals[1].kind).toBe("against");
+  });
+
+  it("refuses to link an asset Ladder doesn't know", async () => {
+    await expect(call(mcp, "save_macro_view", { short_name: "X", area: "Y", conviction: "Low", view: "v", wrong_if: "w", symbols: ["NOPE"] })).rejects.toThrow(/No asset/);
+  });
+
+  it("shows a view past its date as review due, and problem views first", async () => {
+    const overdue = await call(mcp, "save_macro_view", { short_name: "Old", area: "Global", conviction: "Low", view: "old", wrong_if: "w", next_review: addDays(day, -2) });
+    expect(overdue.state).toBe("review");
+    const weak = await call(mcp, "save_macro_view", { short_name: "Weak", area: "Global", conviction: "Low", status: "weak", view: "weak one", wrong_if: "w" });
+    const list = await call(mcp, "get_macro_views");
+    expect(list[0].id).toBe(weak.id);
+    expect(list.at(-1).state).toBe("holding");
+    await call(mcp, "delete_macro_view", { id: overdue.id });
+    await call(mcp, "delete_macro_view", { id: weak.id });
+  });
+
+  it("updates in place and shows the narrowest view on a holding", async () => {
+    const [first] = await call(mcp, "get_macro_views");
+    await call(mcp, "save_macro_view", { id: first.id, short_name: "Rate cuts", area: "Indonesia", conviction: "High", view: first.view, wrong_if: first.wrong_if });
+    expect((await call(mcp, "get_macro_views"))[0].symbols.length).toBe(2);
+    await call(mcp, "save_macro_view", { short_name: "Only BBRI", area: "Indonesia", conviction: "Low", view: "just one", wrong_if: "w", symbols: ["BBRI.JK"] });
+    const { positions } = await read((db) => getPositions(db));
+    expect(positions.find((p) => p.symbol === "BBRI.JK")?.macro?.short_name).toBe("Only BBRI");
+    expect(positions.find((p) => p.symbol === "BBCA.JK")?.macro?.short_name).toBe("Rate cuts");
+  });
+
+  it("keeps macro views private to their account", async () => {
+    const bob = await connect(other.id);
+    expect(await call(bob, "get_macro_views")).toEqual([]);
+    const [first] = await call(mcp, "get_macro_views");
+    await expect(call(bob, "delete_macro_view", { id: first.id })).rejects.toThrow(/No macro view/);
+    await expect(call(bob, "save_macro_view", { id: first.id, short_name: "x", area: "y", conviction: "Low", view: "v", wrong_if: "w" })).rejects.toThrow(/No macro view/);
+    await bob.close();
+  });
+});
+
+describe("trade preview", () => {
+  it("uses the engine for a buy, including fees", async () => {
+    const res = await read((db) => previewTrade(db, { symbol: "TLKM.JK", side: "buy", qty: 100, price: 4000, fee: 1000 }));
+    expect(res).toMatchObject({ side: "buy", total: "401000", qty: "200", avg: "3505" });
+  });
+
+  it("shows realised profit on a sell, net of the fee", async () => {
+    const res = await read((db) => previewTrade(db, { symbol: "TLKM.JK", side: "sell", qty: 50, price: 3500, fee: 500 }));
+    expect(res).toMatchObject({ side: "sell", proceeds: "174500", qty: "50", realized: "24500" });
+  });
+
+  it("refuses to sell more than is held, and saves nothing", async () => {
+    await expect(read((db) => previewTrade(db, { symbol: "TLKM.JK", side: "sell", qty: 500, price: 1 }))).rejects.toThrow(/You hold 100/);
+    const held = await read((db) => db.query("select count(*)::int as n from trades t join assets a on a.id = t.asset_id where a.symbol = 'TLKM.JK'"));
+    expect(held.rows[0].n).toBe(1);
+  });
+
+  it("previews a brand-new asset, and stays quiet until the form is filled", async () => {
+    expect(await read((db) => previewTrade(db, { symbol: "NEW.JK", side: "buy", qty: 10, price: 100 }))).toMatchObject({ qty: "10", avg: "100" });
+    expect(await read((db) => previewTrade(db, { symbol: "TLKM.JK", side: "buy", qty: 0, price: 100 }))).toBeNull();
+  });
+});
+
+describe("growth and price history", () => {
+  it("is empty before the first trade", async () => {
+    expect(await withUser(other.id, (db) => getGrowth(db))).toEqual({ points: [], symbols: [] });
+  });
+
+  it("tracks real value and money invested over time", async () => {
+    const carol = await createUser(getPool(), { email: "growth@example.com", name: "Growth", password: "correct horse" });
+    const client = await connect(carol.id);
+    const d = (n: number) => addDays(day, -n);
+    await call(client, "log_trade", { symbol: "ANTM.JK", type: "buy", qty: 10, price: 1000, date: d(20) });
+    await call(client, "log_trade", { symbol: "ANTM.JK", type: "buy", qty: 10, price: 2000, date: d(10) });
+    await call(client, "log_trade", { symbol: "ANTM.JK", type: "sell", qty: 5, price: 3000, date: d(5) });
+    await withUser(carol.id, async (db) => {
+      const { rows } = await db.query("select * from assets where symbol = 'ANTM.JK'");
+      await savePrice(db, rows[0], d(20), new Decimal(1000), "test");
+      await savePrice(db, rows[0], d(15), new Decimal(1500), "test");
+      await savePrice(db, rows[0], d(10), new Decimal(2000), "test");
+      await savePrice(db, rows[0], d(5), new Decimal(3000), "test");
+      await savePrice(db, rows[0], day, new Decimal(4000), "test");
+    });
+
+    const { points, symbols } = await withUser(carol.id, (db) => getGrowth(db), { readOnly: true });
+    expect(symbols).toEqual(["ANTM.JK"]);
+    const at = (n: number) => points.find((p) => p.date === d(n));
+    expect(points[0]).toMatchObject({ date: d(20), value: 10000, invested: 10000 });
+    expect(at(15)).toMatchObject({ value: 15000, invested: 10000 });
+    expect(at(10)).toMatchObject({ value: 40000, invested: 30000 });
+    expect(at(5)).toMatchObject({ value: 45000, invested: 22500 });
+    expect(points.at(-1)).toMatchObject({ date: day, value: 60000, invested: 22500 });
+    expect(points.at(-1)?.by["ANTM.JK"]).toBe(60000);
+
+    const { portfolio } = await withUser(carol.id, (db) => getPositions(db), { readOnly: true });
+    expect(portfolio.totals.value_idr).toBe("60000.00");
+    await client.close();
+    await deleteUser(getPool(), carol.id);
+  });
+
+  it("fetches real closes back to the first trade, and never overwrites a stored price", async () => {
+    const dave = await createUser(getPool(), { email: "history@example.com", name: "History", password: "correct horse" });
+    const client = await connect(dave.id);
+    const d = (n: number) => addDays(day, -n);
+    history = {
+      "BMRI.JK": [[d(30), 5000], [d(29), 5100], [d(1), 5500]],
+      "GC=F": [[d(30), 3000]],
+      "IDR=X": [[d(40), 16000], [d(30), 16000]],
+      "BTC-USD": [[d(30), 100000]],
+    };
+    await call(client, "log_trade", { symbol: "BMRI.JK", type: "buy", qty: 1, price: 5000, date: d(30) });
+    await call(client, "log_trade", { symbol: "XAU", type: "buy", qty: 1, price: 1000000, date: d(30) });
+    await call(client, "log_trade", { symbol: "BTC", type: "buy", qty: 1, price: 1000000, date: d(30) });
+    await call(client, "set_price", { symbol: "BMRI.JK", price: 7777, date: d(29) });
+
+    const res = await withUser(dave.id, (db) => fillHistory(db));
+    expect(res.failed).toEqual([]);
+
+    const closes = await withUser(dave.id, (db) => db.query(
+      "select a.symbol, p.date, p.close from prices p join assets a on a.id = p.asset_id where p.date = any($1) order by 1,2",
+      [[d(30), d(29)]],
+    ));
+    const get = (symbol: string, date: string) => closes.rows.find((r) => r.symbol === symbol && r.date === date)?.close;
+    expect(get("BMRI.JK", d(30))).toBe("5000");
+    expect(get("BMRI.JK", d(29))).toBe("7777");
+    expect(get("BTC", d(30))).toBe("1600000000");
+    expect(Number(get("XAU", d(30)))).toBeCloseTo((3000 / 31.1034768) * 16000, 1);
+
+    const again = await withUser(dave.id, (db) => fillHistory(db));
+    expect(again.filled).toEqual([]);
+    history = {};
+    await client.close();
+    await deleteUser(getPool(), dave.id);
+    // USD/IDR is shared between accounts, so this test's fake history mustn't outlive it.
+    await getPool().query("delete from prices where date < $1 and asset_id = (select id from assets where symbol = 'USDIDR')", [day]);
+  });
+
+  it("reports when prices were fetched and the USD/IDR rate", async () => {
+    await withUser(user.id, async (db) => {
+      const { rows } = await db.query("select * from assets where symbol = 'USDIDR'");
+      await savePrice(db, rows[0], day, new Decimal(18049), "test");
+    });
+    const status = await read((db) => getPriceStatus(db));
+    expect(status.usd_idr).toBe("18049");
+    expect(status.refreshed_at).toBeInstanceOf(Date);
+  });
+
+  it("lists this account's assets for the trade form, without the exchange rate", async () => {
+    const options = await read((db) => assetOptions(db));
+    expect(options.map((o) => o.symbol)).toContain("BBRI.JK");
+    expect(options.map((o) => o.symbol)).not.toContain("USDIDR");
+    expect(options.find((o) => o.symbol === "BBRI.JK")?.price).toBe("3900");
+  });
+});

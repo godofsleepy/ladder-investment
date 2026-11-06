@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+/* Guardian Finance's tokens, kept identical so the two apps read as one family. See ../DESIGN.md */
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", system-ui, sans-serif;
+
+  --color-page: #f4f6f9;
+  --color-surface: #ffffff;
+  --color-fill: #eef2f7;
+  --color-fill-strong: #e6ebf2;
+  --color-hover: #f1f4f8;
+  --color-line: #e3e8ef;
+  --color-line-soft: #edf1f5;
+
+  --color-ink: #0b1f3a;
+  --color-ink-2: #3a4b63;
+  --color-muted: #5b6b82;
+  --color-faint: #8593a8;
+
+  --color-brand: #0066ae;
+  --color-brand-dark: #00559a;
+  --color-brand-soft: #e5f0fa;
+  --color-on-brand: #ffffff;
+
+  --color-good: #1a7d4f;
+  --color-good-strong: #14663f;
+  --color-warn: #8a5208;
+  --color-warn-soft: #fbf0df;
+  --color-bad: #c93434;
+  --color-bad-strong: #a32828;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-page: #0e1622;
+  --color-surface: #162130;
+  --color-fill: #1f2c3d;
+  --color-fill-strong: #2b3c51;
+  --color-hover: #1c2838;
+  --color-line: #2a3a4e;
+  --color-line-soft: #223042;
+
+  --color-ink: #e8eef6;
+  --color-ink-2: #c3cfdd;
+  --color-muted: #9fafc2;
+  --color-faint: #7a8ba0;
+
+  --color-brand: #6db3ea;
+  --color-brand-dark: #93c8f2;
+  --color-brand-soft: #1b3850;
+  --color-on-brand: #0b1f3a;
+
+  --color-good: #58c996;
+  --color-good-strong: #58c996;
+  --color-warn: #edb05a;
+  --color-warn-soft: #3a2c15;
+  --color-bad: #f48a8a;
+  --color-bad-strong: #f48a8a;
+}
+
+@layer base {
+  body {
+    margin: 0;
+    background: var(--color-page);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    line-height: 1.4;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+  a { color: var(--color-brand); text-decoration: none; }
+  a:hover { color: var(--color-brand-dark); }
+  button { cursor: pointer; font-family: inherit; }
+  input, select { font-family: inherit; }
+  input::placeholder { color: var(--color-muted); }
+  :focus-visible { outline: 2px solid var(--color-brand); outline-offset: 2px; }
+}
+
+@utility card {
+  @apply min-w-0 rounded-[20px] border border-line bg-surface;
+}
+@utility section-title {
+  @apply text-[20px] font-bold tracking-[-0.3px];
+}
+@utility pill {
+  @apply inline-flex min-h-11 items-center rounded-full px-4 text-[13px] font-semibold transition sm:min-h-8 sm:px-3;
+}
+@utility pill-on {
+  @apply bg-brand text-on-brand hover:text-on-brand;
+}
+@utility pill-off {
+  @apply bg-fill text-ink-2 hover:bg-fill-strong hover:text-ink;
+}
+@utility btn-soft {
+  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-fill px-4 text-sm font-semibold text-ink transition hover:bg-fill-strong sm:min-h-10;
+}
+@utility input {
+  @apply h-11 w-full min-w-0 rounded-xl border border-line bg-surface px-3.5 text-sm text-ink transition focus:border-brand;
+}
+@utility row-link {
+  @apply block text-ink transition hover:bg-hover hover:text-ink;
+}

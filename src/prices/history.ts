@@ -1,0 +1,80 @@
+import type { Asset } from "../assets.js";
+import { addDays, daysBetween, today } from "../dates.js";
+import type { Db } from "../db.js";
+import { Decimal } from "../money.js";
+import { GOLD_YAHOO_SYMBOL, goldPerGramIdr, yahooHistory, type DailyClose } from "./feeds.js";
+import { FX_SYMBOL } from "./store.js";
+
+/** A gap this short is a weekend or holiday around the first trade, not missing history. */
+const GAP_DAYS = 5;
+
+async function keep(db: Db, asset: Pick<Asset, "id" | "currency">, closes: DailyClose[], source: string): Promise<void> {
+  for (const { date, close } of closes) {
+    // Never overwrite: a stored close may be a live refresh or a manual price.
+    await db.query(
+      `insert into prices (asset_id, date, close, currency, source) values ($1,$2,$3,$4,$5)
+       on conflict (asset_id, date) do nothing`,
+      [asset.id, date, close.toString(), asset.currency, source],
+    );
+  }
+}
+
+function nearest(series: DailyClose[], date: string): Decimal | null {
+  let found: Decimal | null = null;
+  for (const point of series) {
+    if (point.date > date) break;
+    found = point.close;
+  }
+  return found;
+}
+
+/** Fetches daily closes back to each asset's first trade, so the growth chart shows what really happened. */
+export async function fillHistory(db: Db): Promise<{ filled: string[]; failed: string[] }> {
+  const { rows } = await db.query<Asset & { first_trade: string; earliest: string | null }>(
+    `select a.*, min(t.traded_at) as first_trade,
+       (select min(p.date) from prices p where p.asset_id = a.id) as earliest
+     from assets a join trades t on t.asset_id = a.id
+     where a.price_source <> 'manual'
+     group by a.id`,
+  );
+  const date = today();
+  const stale = rows.filter((a) => !a.earliest || daysBetween(a.first_trade, a.earliest) > GAP_DAYS);
+  const filled: string[] = [];
+  const failed: string[] = [];
+  if (stale.length === 0) return { filled, failed };
+
+  const oldest = stale.map((a) => a.first_trade).sort()[0] as string;
+  const fxRow = await db.query<Asset>("select * from assets where symbol = $1", [FX_SYMBOL]);
+  const fxAsset = fxRow.rows[0] as Asset;
+  let fx: DailyClose[] = [];
+  try {
+    fx = await yahooHistory(fxAsset.source_id as string, addDays(oldest, -7), date);
+    await keep(db, fxAsset, fx, "yahoo");
+  } catch {
+    failed.push(FX_SYMBOL);
+  }
+
+  for (const asset of stale) {
+    const from = addDays(asset.first_trade, -7);
+    const to = asset.earliest ?? date;
+    try {
+      if (asset.price_source === "yahoo") {
+        await keep(db, asset, await yahooHistory(asset.source_id ?? asset.symbol, from, to), "yahoo");
+      } else {
+        const usd = await yahooHistory(asset.price_source === "xau" ? GOLD_YAHOO_SYMBOL : `${asset.symbol}-USD`, from, to);
+        const inIdr: DailyClose[] = [];
+        for (const point of usd) {
+          const rate = nearest(fx, point.date);
+          if (!rate) continue;
+          const close = asset.price_source === "xau" ? goldPerGramIdr(point.close, rate) : point.close.times(rate);
+          inIdr.push({ date: point.date, close: close.toDecimalPlaces(2) });
+        }
+        await keep(db, asset, inIdr, asset.price_source);
+      }
+      filled.push(asset.symbol);
+    } catch {
+      failed.push(asset.symbol);
+    }
+  }
+  return { filled, failed };
+}
