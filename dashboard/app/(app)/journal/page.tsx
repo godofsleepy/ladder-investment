@@ -2,7 +2,9 @@ import { today } from "@ladder/dates";
 import Link from "next/link";
 import { JournalSearch } from "@/components/JournalSearch";
 import { PageActions } from "@/components/PageActions";
-import { Empty, RowId } from "@/components/ui";
+import { CopyContext } from "@/components/CopyContext";
+import { Empty } from "@/components/ui";
+import { noteContext } from "@/lib/context";
 import { fd } from "@/lib/format";
 import { assets, notes, type Note } from "@/lib/ladder";
 
@@ -34,7 +36,7 @@ export default async function JournalPage({ searchParams }: { searchParams: Prom
                   {note.symbol ? <Link href={`/assets/${note.symbol}?from=journal`} className="flex h-6 items-center rounded-[7px] bg-brand-soft px-2 text-xs font-semibold">{note.symbol}</Link> : null}
                   {note.tags.map((tag) => <span key={tag} className="flex h-6 items-center rounded-[7px] bg-fill px-2 text-xs font-semibold text-ink-2">{tag}</span>)}
                   <span className={`text-xs ${note.author === "You" ? "text-muted" : "text-brand"}`}>{note.author}</span>
-                  <RowId id={note.id} label="Note" />
+                  <CopyContext id={note.id} label={`note #${note.id}`} text={noteContext(note)} />
                 </div>
               </div>
             </div>

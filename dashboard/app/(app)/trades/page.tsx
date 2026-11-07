@@ -2,7 +2,9 @@ import { today } from "@ladder/dates";
 import Link from "next/link";
 import { PageActions } from "@/components/PageActions";
 import { TradeFilters } from "@/components/TradeFilters";
-import { Empty, RowId } from "@/components/ui";
+import { CopyContext } from "@/components/CopyContext";
+import { Empty } from "@/components/ui";
+import { tradeContext } from "@/lib/context";
 import { capitalize, fullDate, moneyOf, monthYear, nat, qf } from "@/lib/format";
 import { assets, moneySetting, positions, tradeLog } from "@/lib/ladder";
 
@@ -67,11 +69,11 @@ export default async function TradesPage({ searchParams }: { searchParams: Promi
                     <div className="border-t border-line-soft px-5 pt-3.5 pb-2 text-sm font-bold text-muted">{group.month}</div>
                     {group.rows.map((t) => (
                       <div key={t.id} className={`${GRID} items-center border-t border-line-soft px-5 py-3.5 text-right text-[15px] tabular-nums`}>
-                        <span className="flex items-baseline gap-2 justify-self-start text-left">
+                        <span className="flex items-center gap-2 justify-self-start text-left">
                           <Link href={`/assets/${encodeURIComponent(t.symbol)}?from=trades`} className={`font-bold ${TONE[t.type] ?? ""}`}>
                             {capitalize(t.type)} {t.symbol}
                           </Link>
-                          <RowId id={t.id} label="Trade" />
+                          <CopyContext id={t.id} label={`trade #${t.id}`} text={tradeContext(t, base)} />
                         </span>
                         <span className="flex flex-col items-end gap-px">
                           <span>{nat(t.currency, t.net)}</span>

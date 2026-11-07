@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { Badge, Empty, PageTitle, Tally, RowId } from "@/components/ui";
+import { CopyContext } from "@/components/CopyContext";
+import { Badge, Empty, PageTitle, Tally } from "@/components/ui";
+import { macroContext } from "@/lib/context";
 import { fd, MACRO_BADGE, moneyOf, pc } from "@/lib/format";
 import { macroViews, moneySetting } from "@/lib/ladder";
 
@@ -29,7 +31,7 @@ export default async function ThesesPage() {
                   <div className="flex items-center justify-between gap-2">
                     <span className="flex items-baseline gap-2">
                       <span className="text-xs font-semibold tracking-[.06em] text-muted uppercase">{v.area} · {v.conviction} conviction</span>
-                      <RowId id={v.id} label="Macro view" />
+                      <CopyContext id={v.id} label={`macro view #${v.id}`} text={macroContext(v, base)} />
                     </span>
                     <Badge className={badge.className}>{badge.label}</Badge>
                   </div>

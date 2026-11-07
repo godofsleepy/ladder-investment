@@ -2,7 +2,9 @@
 import Link from "next/link";
 import { useState } from "react";
 import { CLASSES, MACRO_BADGE, moneyOf, nat, pct1, qf, type Money } from "@/lib/format";
+import { positionContext } from "@/lib/context";
 import type { Position } from "@/lib/ladder";
+import { CopyContext } from "./CopyContext";
 import { Badge } from "./ui";
 
 const GRID = "grid grid-cols-[minmax(130px,2fr)_minmax(120px,1.4fr)_repeat(2,minmax(84px,1fr))_minmax(92px,1fr)_92px] gap-2.5";
@@ -52,9 +54,12 @@ export function HoldingsTable({ positions, base }: { positions: Position[]; base
               const macro = p.macro ? MACRO_BADGE[p.macro.state] : null;
               const loss = p.unrealized_idr !== null && Number(p.unrealized_idr) < 0;
               return (
-                <Link key={p.symbol} href={`/assets/${p.symbol}`} className={`${GRID} items-center border-t border-line-soft px-5 py-3 text-right text-sm text-ink tabular-nums hover:bg-hover hover:text-ink`}>
+                <div key={p.symbol} className={`relative ${GRID} items-center border-t border-line-soft px-5 py-3 text-right text-sm text-ink tabular-nums hover:bg-hover hover:text-ink`}>
                   <span className="flex min-w-0 flex-col text-left">
-                    <span className="font-semibold">{p.symbol}</span>
+                    <span className="flex items-center gap-2">
+                      <Link href={`/assets/${p.symbol}`} className="font-semibold text-ink after:absolute after:inset-0 after:content-[''] hover:text-ink">{p.symbol}</Link>
+                      <CopyContext label={`${p.symbol} holding`} text={positionContext(p, base)} />
+                    </span>
                     {p.name !== p.symbol ? <span className="truncate text-xs text-muted">{p.name}</span> : null}
                   </span>
                   <span className="flex flex-col">
@@ -70,7 +75,7 @@ export function HoldingsTable({ positions, base }: { positions: Position[]; base
                   <span className="flex justify-end">
                     <Badge className={macro?.className ?? "bg-fill text-ink-2"}>{p.macro?.short_name ?? "None"}</Badge>
                   </span>
-                </Link>
+                </div>
               );
             })
           )}

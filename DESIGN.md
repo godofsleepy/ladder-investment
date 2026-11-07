@@ -32,3 +32,4 @@ The source of truth is the Ladder design canvas: https://claude.ai/artifact/ThhQ
 - Phones get a five-item bottom bar, with "Trades" as the short label and counts on the item's corner.
 - Position alerts add an Ignore button and an ignored list with Restore, which the canvas doesn't draw. Ignoring hides that one alert, so a new level or the next review still shows.
 - The asset page adds a Price card in the Growth chart's style, up to five years of daily closes. The canvas has no chart there.
+- Every record has a copy button showing its id. It copies a plain-text summary for an AI assistant, with the id and Ladder's own numbers. Asset pages add "Copy for Claude" for the whole asset.

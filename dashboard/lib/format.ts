@@ -138,6 +138,13 @@ export const WATCH_BADGE = {
 
 export type WatchKind = keyof typeof WATCH_BADGE;
 
+export function distanceText(side: string | null, distancePct: string | null): string {
+  if (side === null) return "No price";
+  if (side === "inside") return "Inside";
+  if (side === "below") return "Below zone";
+  return `${Number(distancePct).toFixed(1)}% above`;
+}
+
 /** The canvas treats a price below the zone as a buy, and within 5% above as near. */
 export function watchKind(side: string | null, distancePct: string | null): WatchKind {
   if (side === "inside" || side === "below") return "zone";

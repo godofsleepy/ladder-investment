@@ -1,6 +1,8 @@
 import Link from "next/link";
-import { Badge, Empty, PageTitle, Tally, RowId } from "@/components/ui";
-import { fd, nat, WATCH_BADGE, watchKind, type WatchKind } from "@/lib/format";
+import { CopyContext } from "@/components/CopyContext";
+import { Badge, Empty, PageTitle, Tally } from "@/components/ui";
+import { watchContext } from "@/lib/context";
+import { distanceText, fd, nat, WATCH_BADGE, watchKind, type WatchKind } from "@/lib/format";
 import { watchlist } from "@/lib/ladder";
 
 const GRID = "grid grid-cols-[minmax(200px,2.4fr)_minmax(90px,1fr)_minmax(150px,1.3fr)_minmax(110px,1fr)_104px] gap-3";
@@ -32,13 +34,13 @@ export default async function WatchlistPage() {
                 </div>
                 {rows.map(({ item: w, kind }) => {
                   const badge = WATCH_BADGE[kind];
-                  const distance = w.distance_side === null ? "No price" : w.distance_side === "inside" ? "Inside" : w.distance_side === "below" ? "Below zone" : `${Number(w.distance_pct).toFixed(1)}% above`;
+                  const distance = distanceText(w.distance_side, w.distance_pct);
                   return (
-                    <Link key={w.id} href={`/assets/${w.symbol}?from=watchlist`} className={`${GRID} items-center border-t border-line-soft px-5 py-3.5 text-right text-sm text-ink tabular-nums hover:bg-hover hover:text-ink`}>
+                    <div key={w.id} className={`relative ${GRID} items-center border-t border-line-soft px-5 py-3.5 text-right text-sm text-ink tabular-nums hover:bg-hover hover:text-ink`}>
                       <span className="flex min-w-0 flex-col gap-[3px] text-left">
                         <span className="flex items-baseline gap-2">
-                          <span className="font-bold">{w.symbol}</span>
-                          <RowId id={w.id} label="Watchlist item" />
+                          <Link href={`/assets/${w.symbol}?from=watchlist`} className="font-bold text-ink after:absolute after:inset-0 after:content-[''] hover:text-ink">{w.symbol}</Link>
+                          <CopyContext id={w.id} label={`watchlist item #${w.id}`} text={watchContext(w, kind, distance)} />
                           {w.name !== w.symbol ? <span className="truncate text-xs text-muted">{w.name}</span> : null}
                         </span>
                         <span className="text-[13px] leading-[1.4] text-pretty text-ink-2">{w.reason}</span>
@@ -48,7 +50,7 @@ export default async function WatchlistPage() {
                       <span className="text-ink-2">{nat(w.currency, w.zone_low)} – {nat(w.currency, w.zone_high)}</span>
                       <span className={`font-semibold ${badge.text}`}>{distance}</span>
                       <span className="flex justify-end"><Badge className={badge.className}>{badge.label}</Badge></span>
-                    </Link>
+                    </div>
                   );
                 })}
               </div>
