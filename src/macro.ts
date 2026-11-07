@@ -78,6 +78,24 @@ export async function saveMacroView(db: Db, input: SaveMacroView) {
   return (await getMacroViews(db)).find((v) => v.id === id);
 }
 
+async function requireView(db: Db, id: number): Promise<void> {
+  const { rowCount } = await db.query("select 1 from macro_views where id = $1", [id]);
+  if (!rowCount) throw new LadderError(`No macro view ${id}`);
+}
+
+/** Adds one asset to a view, held or not, keeping the others. */
+export async function linkMacroAsset(db: Db, viewId: number, symbol: string): Promise<void> {
+  await requireView(db, viewId);
+  const asset = await findAsset(db, symbol);
+  if (!asset || asset.class === "fx") throw new LadderError(`No asset called ${symbol} yet. A macro view can only link assets Ladder knows.`);
+  await db.query("insert into macro_holdings (view_id, asset_id) values ($1,$2) on conflict do nothing", [viewId, asset.id]);
+}
+
+export async function unlinkMacroAsset(db: Db, viewId: number, symbol: string): Promise<void> {
+  await requireView(db, viewId);
+  await db.query("delete from macro_holdings where view_id = $1 and asset_id in (select id from assets where symbol = $2)", [viewId, symbol]);
+}
+
 export async function deleteMacroView(db: Db, id: number) {
   const { rowCount } = await db.query("delete from macro_views where id = $1", [id]);
   if (!rowCount) throw new LadderError(`No macro view ${id}`);

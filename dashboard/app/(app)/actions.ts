@@ -6,6 +6,7 @@ import { LadderError } from "@ladder/money";
 import { ignoreAlert, previewTrade, restoreAlert } from "@ladder/overview";
 import { fillAssetHistory } from "@ladder/prices/history";
 import { refreshPrices } from "@ladder/prices/refresh";
+import { linkMacroAsset, unlinkMacroAsset } from "@ladder/macro";
 import { editThesis, reviewThesis, saveThesis, type ReviewEvery } from "@ladder/thesis";
 import { logTrade, settleTrade } from "@ladder/trades";
 import { revalidatePath } from "next/cache";
@@ -147,5 +148,19 @@ export async function loadPriceHistoryAction(symbol: string): Promise<Result> {
   return act(async (userId) => {
     await withUser(userId, (db) => fillAssetHistory(db, symbol));
     return "Price history loaded";
+  });
+}
+
+export async function linkMacroAssetAction(viewId: number, symbol: string): Promise<Result> {
+  return act(async (userId) => {
+    await withUser(userId, (db) => linkMacroAsset(db, viewId, symbol));
+    return `${symbol} linked`;
+  });
+}
+
+export async function unlinkMacroAssetAction(viewId: number, symbol: string): Promise<Result> {
+  return act(async (userId) => {
+    await withUser(userId, (db) => unlinkMacroAsset(db, viewId, symbol));
+    return `${symbol} unlinked`;
   });
 }

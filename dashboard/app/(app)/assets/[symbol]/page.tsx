@@ -29,7 +29,8 @@ export default async function AssetPage({ params, searchParams }: { params: Prom
   const d = await assetDetail(decodeURIComponent(symbol));
   const [{ positions: open }, options, base, status, chart] = await Promise.all([positions(), assets(), moneySetting(), priceStatus(), priceChart(d.asset.symbol)]);
   const { money, signed } = moneyOf(base);
-  const back = BACK[from ?? ""] ?? { href: "/", label: "Portfolio" };
+  const viewId = /^view-(\d+)$/.exec(from ?? "")?.[1];
+  const back = viewId ? { href: `/theses/${viewId}`, label: "Macro view" } : (BACK[from ?? ""] ?? { href: "/", label: "Portfolio" });
 
   const a = d.asset;
   const position = open.find((p) => p.symbol === a.symbol) ?? null;

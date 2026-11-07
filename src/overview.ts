@@ -3,7 +3,8 @@ import { addDays, daysBetween, today } from "./dates.js";
 import type { Db } from "./db.js";
 import { replay, type EngineTrade, type TradeType } from "./engine.js";
 import { getMacroViews } from "./macro.js";
-import { Decimal, LadderError, parseAmount } from "./money.js";
+import { getWatchlist } from "./watchlist.js";
+import { Decimal, LadderError, parseAmount, pct } from "./money.js";
 import { getPortfolio } from "./portfolio.js";
 import { HISTORY_DAYS } from "./prices/history.js";
 import { FX_SYMBOL, latestPrices, priceHistory } from "./prices/store.js";
@@ -89,6 +90,41 @@ export async function getPriceChart(db: Db, symbol: string) {
     points: rows.map((r) => ({ date: r.date, close: Number(r.close) })),
     needs_history: asset.price_source !== "manual" && !asset.history_filled_at,
   };
+}
+
+/** One macro view with every asset linked to it, held or not, and what each means for you. */
+export async function getMacroView(db: Db, id: number) {
+  const view = (await getMacroViews(db)).find((v) => v.id === id);
+  if (!view) throw new LadderError(`No macro view ${id}`);
+  const { rows: linked } = await db.query<{ id: number; symbol: string; name: string; class: string; currency: string }>(
+    `select a.id, a.symbol, a.name, a.class, a.currency from macro_holdings m join assets a on a.id = m.asset_id
+     where m.view_id = $1 order by a.symbol`,
+    [id],
+  );
+  const { positions } = await getPositions(db);
+  const watch = await getWatchlist(db, {});
+  const prices = await latestPrices(db);
+  const exposure = new Decimal(view.exposure_idr);
+
+  const assets = linked.map((a) => {
+    const p = positions.find((x) => x.symbol === a.symbol) ?? null;
+    const w = watch.items.find((i) => i.symbol === a.symbol) ?? null;
+    return {
+      symbol: a.symbol,
+      name: a.name,
+      class: a.class,
+      currency: a.currency,
+      price: p?.price ?? prices.get(a.id)?.close.toString() ?? null,
+      position: p,
+      share_pct: p?.value_idr && !exposure.isZero() ? pct(new Decimal(p.value_idr).div(exposure).times(100)) : null,
+      watch: w
+        ? { id: w.id, zone_low: w.zone_low, zone_high: w.zone_high, distance_side: w.distance_side, distance_pct: w.distance_pct }
+        : null,
+    };
+  });
+  // What you hold comes first, biggest first, then what you only follow.
+  assets.sort((x, y) => Number(y.position?.value_idr ?? -1) - Number(x.position?.value_idr ?? -1) || x.symbol.localeCompare(y.symbol));
+  return { ...view, assets };
 }
 
 const STEP_AFTER_DAYS = 180;

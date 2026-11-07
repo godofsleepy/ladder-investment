@@ -36,7 +36,9 @@ export default async function ThesesPage() {
                     <Badge className={badge.className}>{badge.label}</Badge>
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <h2 className="m-0 text-[18px] leading-[1.3] font-bold text-pretty">{v.view}</h2>
+                    <h2 className="m-0 text-[18px] leading-[1.3] font-bold text-pretty">
+                      <Link href={`/theses/${v.id}`} className="text-ink hover:text-brand">{v.view}</Link>
+                    </h2>
                     {v.why ? <p className="m-0 text-sm leading-normal text-pretty text-ink-2">{v.why}</p> : null}
                   </div>
                   {v.signals.length > 0 ? (
@@ -60,7 +62,7 @@ export default async function ThesesPage() {
                     {v.symbols.length > 0 ? (
                       <div className="flex flex-wrap gap-1.5">
                         {v.symbols.map((symbol) => (
-                          <Link key={symbol} href={`/assets/${symbol}?from=theses`} className="flex h-7 items-center rounded-lg bg-brand-soft px-2.5 text-xs font-bold">{symbol}</Link>
+                          <Link key={symbol} href={`/assets/${symbol}?from=view-${v.id}`} className="flex h-7 items-center rounded-lg bg-brand-soft px-2.5 text-xs font-bold">{symbol}</Link>
                         ))}
                       </div>
                     ) : (
@@ -69,7 +71,10 @@ export default async function ThesesPage() {
                   </div>
                   <div className="mt-auto flex flex-col gap-1 border-t border-line-soft pt-3 text-[13px] leading-[1.45]">
                     <span><b className="font-semibold">Wrong if:</b> <span className="text-ink-2">{v.wrong_if}</span></span>
-                    <span className="text-xs text-muted">{v.overdue ? `Review was due ${fd(v.next_review)}` : `Next review ${fd(v.next_review)}`}</span>
+                    <span className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+                      {v.overdue ? `Review was due ${fd(v.next_review)}` : `Next review ${fd(v.next_review)}`}
+                      <Link href={`/theses/${v.id}`} className="text-[13px] font-semibold">Stocks affected and details ›</Link>
+                    </span>
                   </div>
                 </article>
               );

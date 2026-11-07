@@ -6,11 +6,12 @@ import { addDays, today } from "../src/dates.js";
 import { closePool, getPool, withUser } from "../src/db.js";
 import { migrate } from "../src/migrate.js";
 import { Decimal } from "../src/money.js";
-import { assetOptions, getGrowth, getPositions, getPriceChart, getPriceStatus, ignoreAlert, previewTrade, restoreAlert } from "../src/overview.js";
+import { assetOptions, getGrowth, getMacroView, getPositions, getPriceChart, getPriceStatus, ignoreAlert, previewTrade, restoreAlert } from "../src/overview.js";
 import { fillAssetHistory, fillHistory } from "../src/prices/history.js";
 import { savePrice } from "../src/prices/store.js";
 import { createServer } from "../src/tools.js";
 import { getTradeLog } from "../src/trades.js";
+import { linkMacroAsset, unlinkMacroAsset } from "../src/macro.js";
 
 const day = today();
 let history: Record<string, Array<[string, number]>> = {};
@@ -453,6 +454,44 @@ describe("asset price chart", () => {
     await expect(withUser(owner.id, (db) => fillAssetHistory(db, "AAPL"))).rejects.toThrow("Couldn't fetch AAPL's price history");
     vi.stubGlobal("fetch", real);
     expect((await withUser(owner.id, (db) => getPriceChart(db, "AAPL"))).needs_history).toBe(true);
+    await deleteUser(getPool(), owner.id);
+  });
+});
+
+describe("macro view detail", () => {
+  it("lists linked stocks, held or followed, with each one's share of the exposure", async () => {
+    const owner = await createUser(getPool(), { email: "view@example.com", name: "View", password: "correct horse" });
+    const client = await connect(owner.id);
+    await call(client, "log_trade", { symbol: "BBRI.JK", type: "buy", qty: 100, price: 4000 });
+    await call(client, "log_trade", { symbol: "BBCA.JK", type: "buy", qty: 100, price: 8000 });
+    await call(client, "set_price", { symbol: "BBRI.JK", price: 3000 });
+    await call(client, "set_price", { symbol: "BBCA.JK", price: 9000 });
+    await call(client, "add_to_watchlist", { symbol: "BMRI.JK", zone_low: 4000, zone_high: 4500, reason: "Cheap" });
+    const view = await call(client, "save_macro_view", { short_name: "Rate cuts", area: "Indonesia", conviction: "Medium", view: "Cuts lift banks", wrong_if: "No cuts", symbols: ["BBRI.JK"] });
+    const w = (fn: Parameters<typeof withUser>[1]) => withUser(owner.id, fn);
+
+    await w((db) => linkMacroAsset(db, view.id, "BBCA.JK"));
+    await w((db) => linkMacroAsset(db, view.id, "BBCA.JK"));
+    await w((db) => linkMacroAsset(db, view.id, "BMRI.JK"));
+    const detail = await withUser(owner.id, (db) => getMacroView(db, view.id), { readOnly: true });
+    expect(detail.assets.map((a) => [a.symbol, a.position ? "held" : "followed", a.share_pct])).toEqual([
+      ["BBCA.JK", "held", "75.00"],
+      ["BBRI.JK", "held", "25.00"],
+      ["BMRI.JK", "followed", null],
+    ]);
+    expect(detail.exposure_idr).toBe("1200000.00");
+    expect(detail.assets.find((a) => a.symbol === "BMRI.JK")?.watch).toMatchObject({ zone_low: "4000" });
+
+    await w((db) => unlinkMacroAsset(db, view.id, "BBRI.JK"));
+    expect((await w((db) => getMacroView(db, view.id))).assets.map((a) => a.symbol)).toEqual(["BBCA.JK", "BMRI.JK"]);
+
+    await expect(w((db) => linkMacroAsset(db, view.id, "NOPE"))).rejects.toThrow("No asset called NOPE");
+    await expect(w((db) => linkMacroAsset(db, view.id, "USDIDR"))).rejects.toThrow("No asset called");
+    await expect(withUser(other.id, (db) => getMacroView(db, view.id))).rejects.toThrow(`No macro view ${view.id}`);
+    await expect(withUser(other.id, (db) => linkMacroAsset(db, view.id, "BBCA.JK"))).rejects.toThrow("No macro view");
+    await expect(withUser(other.id, (db) => unlinkMacroAsset(db, view.id, "BBCA.JK"))).rejects.toThrow("No macro view");
+
+    await client.close();
     await deleteUser(getPool(), owner.id);
   });
 });
