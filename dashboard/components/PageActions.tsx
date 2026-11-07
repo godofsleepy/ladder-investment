@@ -21,7 +21,7 @@ export function PageActions({
   defaultSymbol?: string;
   /** Elsewhere: the trade form starts on your biggest holding, and a note starts untagged. */
   tradeDefault?: string;
-  only?: "note";
+  only?: "note" | "trade";
 }) {
   const [open, setOpen] = useState<"trade" | "note" | null>(null);
   const { say, toast } = useToast();
@@ -32,8 +32,8 @@ export function PageActions({
 
   return (
     <div className="flex gap-2">
-      <button type="button" onClick={() => setOpen("note")} className={only ? primaryButton : softButton}>Add note</button>
-      {only ? null : <button type="button" onClick={() => setOpen("trade")} className={primaryButton}>Log trade</button>}
+      {only === "trade" ? null : <button type="button" onClick={() => setOpen("note")} className={only ? primaryButton : softButton}>Add note</button>}
+      {only === "note" ? null : <button type="button" onClick={() => setOpen("trade")} className={primaryButton}>Log trade</button>}
       {open === "trade" ? <TradeForm assets={assets} defaultSymbol={defaultSymbol ?? tradeDefault} today={today} onClose={() => setOpen(null)} onDone={done} /> : null}
       {open === "note" ? <NoteForm assets={assets} defaultSymbol={defaultSymbol} onClose={() => setOpen(null)} onDone={done} /> : null}
       {toast}

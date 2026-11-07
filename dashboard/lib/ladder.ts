@@ -6,6 +6,7 @@ import { getMacroViews } from "@ladder/macro";
 import { LadderError } from "@ladder/money";
 import { assetOptions, getGrowth, getPositions, getPriceStatus } from "@ladder/overview";
 import { getAllocation } from "@ladder/portfolio";
+import { getTradeLog } from "@ladder/trades";
 import { getWatchlist } from "@ladder/watchlist";
 import { notFound } from "next/navigation";
 import type { Money } from "./format";
@@ -34,6 +35,7 @@ export const watchlist = () => read((db) => getWatchlist(db, {}));
 export const assets = () => read((db) => assetOptions(db));
 export const priceStatus = () => read((db) => getPriceStatus(db));
 export const notes = (text?: string) => orNotFound(() => read((db) => searchNotes(db, { text, limit: 100 })));
+export const tradeLog = (filter: { side?: string; symbol?: string }) => read((db) => getTradeLog(db, filter));
 export const assetDetail = (symbol: string) => orNotFound(() => read((db) => getAssetDetail(db, symbol)));
 
 export async function connections() {

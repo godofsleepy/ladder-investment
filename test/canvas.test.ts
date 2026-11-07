@@ -10,6 +10,7 @@ import { assetOptions, getGrowth, getPositions, getPriceStatus, previewTrade } f
 import { fillHistory } from "../src/prices/history.js";
 import { savePrice } from "../src/prices/store.js";
 import { createServer } from "../src/tools.js";
+import { getTradeLog } from "../src/trades.js";
 
 const day = today();
 let history: Record<string, Array<[string, number]>> = {};
@@ -234,6 +235,23 @@ describe("growth and price history", () => {
     await deleteUser(getPool(), carol.id);
   });
 
+  it("gives only current holdings a line, while sold ones still count in past value", async () => {
+    const erin = await createUser(getPool(), { email: "sold@example.com", name: "Sold", password: "correct horse" });
+    const client = await connect(erin.id);
+    const d = (n: number) => addDays(day, -n);
+    await call(client, "log_trade", { symbol: "ANTM.JK", type: "buy", qty: 10, price: 1000, date: d(20) });
+    await call(client, "log_trade", { symbol: "ANTM.JK", type: "sell", qty: 10, price: 1000, date: d(10) });
+    await call(client, "log_trade", { symbol: "BBRI.JK", type: "buy", qty: 10, price: 500, date: d(15) });
+    await call(client, "log_trade", { symbol: "BBRI.JK", type: "sell", qty: 4, price: 500, date: d(5) });
+
+    const { points, symbols } = await withUser(erin.id, (db) => getGrowth(db), { readOnly: true });
+    expect(symbols).toEqual(["BBRI.JK"]);
+    expect(points.find((p) => p.date === d(15))).toMatchObject({ value: 15000, invested: 15000 });
+    expect(points.every((p) => !("ANTM.JK" in p.by))).toBe(true);
+    await client.close();
+    await deleteUser(getPool(), erin.id);
+  });
+
   it("fetches real closes back to the first trade, and never overwrites a stored price", async () => {
     const dave = await createUser(getPool(), { email: "history@example.com", name: "History", password: "correct horse" });
     const client = await connect(dave.id);
@@ -286,5 +304,63 @@ describe("growth and price history", () => {
     expect(options.map((o) => o.symbol)).toContain("BBRI.JK");
     expect(options.map((o) => o.symbol)).not.toContain("USDIDR");
     expect(options.find((o) => o.symbol === "BBRI.JK")?.price).toBe("3900");
+  });
+});
+
+describe("trade log", () => {
+  let log: Client;
+  let trader: User;
+  const logRead = <T>(fn: (db: Parameters<Parameters<typeof withUser>[1]>[0]) => Promise<T>) =>
+    withUser(trader.id, fn, { readOnly: true });
+
+  beforeAll(async () => {
+    trader = await createUser(getPool(), { email: "log@example.com", name: "Log", password: "correct horse" });
+    log = await connect(trader.id);
+    await call(log, "log_trade", { symbol: "UNVR.JK", type: "buy", qty: 100, price: 2000, fee: 500, date: "2026-01-10" });
+    await call(log, "log_trade", { symbol: "UNVR.JK", type: "sell", qty: 40, price: 2500, fee: 100, date: "2026-02-10" });
+    await call(log, "log_trade", { symbol: "UNVR.JK", type: "dividend", qty: 60, price: 50, date: "2026-02-11" });
+    await call(log, "log_trade", { symbol: "NVDA", asset_class: "us_stock", type: "buy", qty: 2, price: 100, fee: 1, trade_currency: "USD", fx_rate: 16000, date: "2026-03-01" });
+    await call(log, "log_trade", { symbol: "UNVR.JK", type: "fee", fee: 300, date: "2026-03-02" });
+    await call(log, "log_trade", { symbol: "ADRO.JK", type: "deposit", qty: 10, price: 3000, date: "2026-03-03" });
+  });
+
+  afterAll(async () => {
+    await log.close();
+    await deleteUser(getPool(), trader.id);
+  });
+
+  it("lists every asset's trades newest first, with net amounts", async () => {
+    const res = await logRead((db) => getTradeLog(db));
+    expect(res.entries.map((e) => `${e.type} ${e.symbol}`)).toEqual([
+      "deposit ADRO.JK", "fee UNVR.JK", "buy NVDA", "dividend UNVR.JK", "sell UNVR.JK", "buy UNVR.JK",
+    ]);
+    const net = Object.fromEntries(res.entries.map((e) => [`${e.type} ${e.symbol}`, e.net]));
+    expect(net).toMatchObject({ "buy UNVR.JK": "200500", "sell UNVR.JK": "99900", "dividend UNVR.JK": "3000", "fee UNVR.JK": "300", "buy NVDA": "201" });
+  });
+
+  it("converts at the trade's own rate and totals what's left after filtering", async () => {
+    const res = await logRead((db) => getTradeLog(db));
+    expect(res.entries.find((e) => e.symbol === "NVDA")?.net_idr).toBe("3216000");
+    expect(res.totals).toEqual({ bought_idr: "3416500", sold_idr: "99900", dividends_idr: "3000" });
+
+    const sells = await logRead((db) => getTradeLog(db, { side: "sell" }));
+    expect(sells.entries).toHaveLength(1);
+    expect(sells.totals).toEqual({ bought_idr: "0", sold_idr: "99900", dividends_idr: "0" });
+    expect(sells.symbols).toEqual(["ADRO.JK", "NVDA", "UNVR.JK"]);
+  });
+
+  it("filters by side and asset, and ignores an unknown side", async () => {
+    const other = await logRead((db) => getTradeLog(db, { side: "other" }));
+    expect(other.entries.map((e) => e.type)).toEqual(["deposit", "fee"]);
+    const one = await logRead((db) => getTradeLog(db, { side: "buy", symbol: "NVDA" }));
+    expect(one.entries).toHaveLength(1);
+    const odd = await logRead((db) => getTradeLog(db, { side: "nonsense" }));
+    expect(odd.side).toBe("all");
+    expect(odd.entries).toHaveLength(6);
+  });
+
+  it("shows nothing from another account", async () => {
+    const res = await withUser(other.id, (db) => getTradeLog(db), { readOnly: true });
+    expect(res.entries.some((e) => e.symbol === "UNVR.JK")).toBe(false);
   });
 });

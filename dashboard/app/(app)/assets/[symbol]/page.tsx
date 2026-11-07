@@ -10,6 +10,7 @@ const FEEDS: Record<string, string> = { coingecko: "CoinGecko", yahoo: "Yahoo Fi
 const BACK: Record<string, { href: string; label: string }> = {
   watchlist: { href: "/watchlist", label: "Watchlist" },
   theses: { href: "/theses", label: "Theses" },
+  trades: { href: "/trades", label: "Trade log" },
   journal: { href: "/journal", label: "Journal" },
 };
 

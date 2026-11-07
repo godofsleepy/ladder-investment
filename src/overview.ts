@@ -132,7 +132,11 @@ export async function getGrowth(db: Db): Promise<{ points: GrowthPoint[]; symbol
   for (let d = first; d < date; d = addDays(d, step)) dates.push(d);
   dates.push(date);
 
-  const symbols = [...new Set(trades.map((t) => t.symbol))];
+  // Sold assets still count towards past value, but only what's held today gets its own line.
+  const symbols = [...byAsset.values()]
+    .filter((list) => !replay(list.map((t) => toEngine(t))).qty.isZero())
+    .map((list) => (list[0] as TradeRow).symbol);
+  const heldNow = new Set(symbols);
   const points = dates.map((day) => {
     let value = 0;
     let invested = 0;
@@ -140,7 +144,7 @@ export async function getGrowth(db: Db): Promise<{ points: GrowthPoint[]; symbol
     for (const [assetId, list] of byAsset) {
       const held = list.filter((t) => t.traded_at <= day);
       const symbol = (list[0] as TradeRow).symbol;
-      by[symbol] = null;
+      if (heldNow.has(symbol)) by[symbol] = null;
       if (held.length === 0) continue;
       const position = replay(held.map((t) => toEngine(t)));
       invested += position.cost.toNumber();
@@ -151,7 +155,7 @@ export async function getGrowth(db: Db): Promise<{ points: GrowthPoint[]; symbol
       const rate = native === "IDR" ? 1 : (lastOn(fx, day) ?? Number(last.fx_to_idr));
       if (close === null) continue;
       const assetValue = position.qty.toNumber() * close * rate;
-      by[symbol] = Math.round(assetValue);
+      if (heldNow.has(symbol)) by[symbol] = Math.round(assetValue);
       value += assetValue;
     }
     return { date: day, value: Math.round(value), invested: Math.round(invested), by };

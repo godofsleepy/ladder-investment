@@ -73,6 +73,9 @@ export function monthYear(date: string): string {
   return new Date(`${date}T00:00:00+07:00`).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: JAKARTA });
 }
 
+/** "05 Mar 2025": the trade log always shows the year. */
+export const fullDate = (date: string) => `${date.slice(8)} ${monthYear(date)}`;
+
 /** "08:00 WIB", or the date as well if it wasn't today. */
 export function refreshedLabel(at: Date | string | null): string {
   if (!at) return "Not fetched yet";

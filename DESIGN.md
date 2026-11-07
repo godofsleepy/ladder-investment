@@ -27,3 +27,6 @@ The source of truth is the Ladder design canvas: https://claude.ai/artifact/ThhQ
 - Account adds a Theme row. Its profile and two-step sections aren't drawn on the board, so they aren't built.
 - Journal labels notes from an agent "Assistant", where the canvas says "Ladder alert", because they aren't always alerts.
 - Phones get a bottom bar and a Prices card under Holdings, which the desktop-only board doesn't show.
+- The Trade log's Cash filter reads "Deposits & fees". Ladder has no cash ledger: a deposit brings a holding in at cost, so there are no cash deposits or withdrawals to show.
+- Trade log net amounts include fees, and USD trades convert at the rate on the trade date, where the canvas uses gross amounts at today's rate.
+- Phones get a five-item bottom bar, with "Trades" as the short label and counts on the item's corner.

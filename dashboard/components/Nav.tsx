@@ -5,10 +5,11 @@ import { initials } from "@/lib/format";
 import { Logo } from "./Logo";
 import { PricesCard } from "./PricesCard";
 
-const ITEMS = [
+const ITEMS: Array<{ href: string; label: string; short?: string }> = [
   { href: "/", label: "Portfolio" },
   { href: "/watchlist", label: "Watchlist" },
   { href: "/theses", label: "Theses" },
+  { href: "/trades", label: "Trade log", short: "Trades" },
   { href: "/journal", label: "Journal" },
 ];
 
@@ -110,7 +111,7 @@ export function Sidebar({
 export function BottomBar({ counts }: { counts: NavCounts }) {
   const pathname = usePathname();
   return (
-    <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-4 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden">
+    <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-5 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden">
       {ITEMS.map((item) => {
         const active = isActive(pathname, item.href);
         const count = badge(item.href, counts);
@@ -119,11 +120,11 @@ export function BottomBar({ counts }: { counts: NavCounts }) {
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={`flex min-h-14 min-w-0 items-center justify-center gap-1 text-[13px] font-semibold ${active ? "text-brand" : "text-ink-2"}`}
+            className={`relative flex min-h-14 min-w-0 items-center justify-center text-xs font-semibold ${active ? "text-brand" : "text-ink-2"}`}
           >
-            {item.label}
+            {item.short ?? item.label}
             {count ? (
-              <span className={`flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[11px] font-bold text-page tabular-nums ${count.className}`}>
+              <span className={`absolute top-1 right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[11px] font-bold text-page tabular-nums ${count.className}`}>
                 <span className="sr-only">{count.label}</span>
                 {count.n}
               </span>

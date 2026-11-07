@@ -277,3 +277,69 @@ export async function tradesFor(db: Db, symbol: string, limit = 50) {
   );
   return rows;
 }
+
+export const TRADE_SIDES = ["all", "buy", "sell", "dividend", "other"] as const;
+export type TradeSide = (typeof TRADE_SIDES)[number];
+
+const sideOf = (type: string): TradeSide =>
+  type === "buy" || type === "sell" || type === "dividend" ? type : "other";
+
+/** What the trade did to your money: fees add to a purchase and come off proceeds. */
+function netAmount(type: string, gross: Decimal, fee: Decimal): Decimal {
+  if (type === "fee") return fee;
+  return type === "buy" || type === "deposit" ? gross.plus(fee) : gross.minus(fee);
+}
+
+/** Every trade across all assets, newest first, with totals for whatever the filters leave. */
+export async function getTradeLog(db: Db, filter: { side?: string; symbol?: string } = {}) {
+  const { rows } = await db.query<{
+    id: number;
+    symbol: string;
+    class: string;
+    type: string;
+    qty: string;
+    price: string;
+    fee: string;
+    currency: string;
+    fx_to_idr: string;
+    date: string;
+  }>(
+    `select t.id, a.symbol, a.class, t.type, t.qty, t.price, t.fee, t.currency, t.fx_to_idr, t.traded_at as date
+     from trades t join assets a on a.id = t.asset_id
+     order by t.traded_at desc, t.id desc`,
+  );
+
+  const side = TRADE_SIDES.find((s) => s === filter.side) ?? "all";
+  const symbol = filter.symbol || null;
+  const totals = { buy: new Decimal(0), sell: new Decimal(0), dividend: new Decimal(0) };
+
+  const entries = rows
+    .filter((r) => (side === "all" || sideOf(r.type) === side) && (!symbol || r.symbol === symbol))
+    .map((r) => {
+      const net = netAmount(r.type, new Decimal(r.qty).times(r.price), new Decimal(r.fee));
+      const netIdr = net.times(r.fx_to_idr);
+      const key = sideOf(r.type);
+      if (key !== "all" && key !== "other") totals[key] = totals[key].plus(netIdr);
+      return {
+        id: r.id,
+        symbol: r.symbol,
+        class: r.class,
+        type: r.type,
+        qty: r.qty,
+        price: r.price,
+        currency: r.currency,
+        date: r.date,
+        net: net.toString(),
+        net_idr: netIdr.toString(),
+      };
+    });
+
+  return {
+    side,
+    symbol,
+    has_trades: rows.length > 0,
+    symbols: [...new Set(rows.map((r) => r.symbol))].sort(),
+    entries,
+    totals: { bought_idr: totals.buy.toString(), sold_idr: totals.sell.toString(), dividends_idr: totals.dividend.toString() },
+  };
+}
