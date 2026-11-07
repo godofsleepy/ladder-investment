@@ -1,11 +1,11 @@
 import { today } from "@ladder/dates";
-import Link from "next/link";
 import { GrowthChart } from "@/components/GrowthChart";
 import { HoldingsTable } from "@/components/HoldingsTable";
 import { PageActions } from "@/components/PageActions";
+import { PositionAlerts } from "@/components/PositionAlerts";
 import { PricesCard } from "@/components/PricesCard";
-import { Badge, Empty, eyebrow } from "@/components/ui";
-import { CLASSES, classLabel, moneyOf, pc, pct1, POSITION_BADGE, positionWhy, refreshedLabel } from "@/lib/format";
+import { Empty, eyebrow } from "@/components/ui";
+import { CLASSES, classLabel, moneyOf, pc, pct1, POSITION_BADGE, refreshedLabel } from "@/lib/format";
 import { allocation, assets, growth, moneySetting, positions, priceStatus } from "@/lib/ladder";
 
 export default async function PortfolioPage() {
@@ -55,8 +55,9 @@ export default async function PortfolioPage() {
     .join(", ")})`;
 
   const alerts = open
-    .filter((p) => p.state !== "ok")
+    .filter((p) => p.state !== "ok" && !p.ignored)
     .sort((a, b) => POSITION_BADGE[a.state].rank - POSITION_BADGE[b.state].rank);
+  const ignored = open.filter((p) => p.ignored);
   const loss = Number(t.unrealized_idr) < 0;
 
   return (
@@ -100,27 +101,7 @@ export default async function PortfolioPage() {
           </div>
         </div>
 
-        <div className="card flex flex-col gap-2 px-2 pt-5 pb-3">
-          <div className="flex items-baseline justify-between px-3">
-            <h2 className="m-0 text-[17px] font-bold">Position alerts</h2>
-            <span className="text-[13px] text-muted">{alerts.length} need attention</span>
-          </div>
-          {alerts.length === 0 ? (
-            <p className="m-0 px-3 py-2.5 text-sm text-ink-2">Every position is on track.</p>
-          ) : (
-            <div className="flex flex-col">
-              {alerts.map((p) => (
-                <Link key={p.symbol} href={`/assets/${p.symbol}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl px-3 py-2.5 text-ink hover:bg-hover hover:text-ink">
-                  <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="text-sm font-semibold">{p.symbol}</span>
-                    <span className="text-[13px] text-pretty text-ink-2">{positionWhy(p)}</span>
-                  </span>
-                  <Badge className={POSITION_BADGE[p.state].className}>{POSITION_BADGE[p.state].label}</Badge>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
+        <PositionAlerts alerts={alerts} ignored={ignored} />
       </section>
 
       <HoldingsTable positions={open} base={base} />

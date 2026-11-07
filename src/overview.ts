@@ -5,11 +5,21 @@ import { replay, type EngineTrade, type TradeType } from "./engine.js";
 import { getMacroViews } from "./macro.js";
 import { Decimal, LadderError, parseAmount } from "./money.js";
 import { getPortfolio } from "./portfolio.js";
-import { FX_SYMBOL, latestPrices } from "./prices/store.js";
+import { HISTORY_DAYS } from "./prices/history.js";
+import { FX_SYMBOL, latestPrices, priceHistory } from "./prices/store.js";
 import { getTheses } from "./thesis.js";
 
 export type PositionState = "alert" | "missing" | "review" | "ok";
 export type PositionReason = "kill" | "cap" | "target" | "date" | "none" | "next";
+
+/** Names one alert exactly, so ignoring it doesn't hide a new level or the next review. */
+function alertKeyOf(reason: PositionReason, kill: unknown, cap: number | null, target: unknown, review: unknown): string {
+  if (reason === "kill") return `kill:${kill}`;
+  if (reason === "cap") return `cap:${cap}`;
+  if (reason === "target") return `target:${target}`;
+  if (reason === "date") return `date:${review}`;
+  return reason;
+}
 
 /** What the Position alerts card and the Holdings table show for each open position. */
 export async function getPositions(db: Db) {
@@ -17,6 +27,10 @@ export async function getPositions(db: Db) {
   const theses = await getTheses(db, { status: "active" });
   const views = await getMacroViews(db);
   const bySymbol = new Map(theses.map((t) => [t.symbol, t]));
+  const dismissed = await db.query<{ symbol: string; ignored_alert: string }>(
+    "select symbol, ignored_alert from assets where ignored_alert is not null",
+  );
+  const ignoredBySymbol = new Map(dismissed.rows.map((r) => [r.symbol, r.ignored_alert]));
 
   const positions = portfolio.holdings.map((h) => {
     const thesis = bySymbol.get(h.symbol) ?? null;
@@ -38,10 +52,14 @@ export async function getPositions(db: Db) {
       .filter((v) => v.symbols.includes(h.symbol))
       .sort((a, b) => a.symbols.length - b.symbols.length)[0];
 
+    const alertKey = state === "ok" ? null : alertKeyOf(reason, thesis?.kill_price, cap, thesis?.target_price, thesis?.next_review);
+
     return {
       ...h,
       state,
       reason,
+      alert_key: alertKey,
+      ignored: alertKey !== null && ignoredBySymbol.get(h.symbol) === alertKey,
       kill_price: thesis?.kill_price ?? null,
       target_price: thesis?.target_price ?? null,
       cap_pct: cap,
@@ -50,6 +68,27 @@ export async function getPositions(db: Db) {
     };
   });
   return { portfolio, positions };
+}
+
+export async function ignoreAlert(db: Db, symbol: string): Promise<void> {
+  const { positions } = await getPositions(db);
+  const position = positions.find((p) => p.symbol === symbol);
+  if (!position?.alert_key) throw new LadderError(`${symbol} has no alert to ignore`);
+  await db.query("update assets set ignored_alert = $2 where symbol = $1", [symbol, position.alert_key]);
+}
+
+export async function restoreAlert(db: Db, symbol: string): Promise<void> {
+  await db.query("update assets set ignored_alert = null where symbol = $1", [symbol]);
+}
+
+/** Daily closes for the asset page, and whether its long history still has to be fetched. */
+export async function getPriceChart(db: Db, symbol: string) {
+  const asset = await requireAsset(db, symbol);
+  const rows = await priceHistory(db, asset.id, HISTORY_DAYS);
+  return {
+    points: rows.map((r) => ({ date: r.date, close: Number(r.close) })),
+    needs_history: asset.price_source !== "manual" && !asset.history_filled_at,
+  };
 }
 
 const STEP_AFTER_DAYS = 180;

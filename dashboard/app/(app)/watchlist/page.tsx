@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Badge, Empty, PageTitle, Tally } from "@/components/ui";
+import { Badge, Empty, PageTitle, Tally, RowId } from "@/components/ui";
 import { fd, nat, WATCH_BADGE, watchKind, type WatchKind } from "@/lib/format";
 import { watchlist } from "@/lib/ladder";
 
@@ -38,6 +38,7 @@ export default async function WatchlistPage() {
                       <span className="flex min-w-0 flex-col gap-[3px] text-left">
                         <span className="flex items-baseline gap-2">
                           <span className="font-bold">{w.symbol}</span>
+                          <RowId id={w.id} label="Watchlist item" />
                           {w.name !== w.symbol ? <span className="truncate text-xs text-muted">{w.name}</span> : null}
                         </span>
                         <span className="text-[13px] leading-[1.4] text-pretty text-ink-2">{w.reason}</span>

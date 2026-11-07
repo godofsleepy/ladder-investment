@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Badge, Empty, PageTitle, Tally } from "@/components/ui";
+import { Badge, Empty, PageTitle, Tally, RowId } from "@/components/ui";
 import { fd, MACRO_BADGE, moneyOf, pc } from "@/lib/format";
 import { macroViews, moneySetting } from "@/lib/ladder";
 
@@ -27,7 +27,10 @@ export default async function ThesesPage() {
               return (
                 <article key={v.id} className="card flex flex-col gap-3.5 p-5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold tracking-[.06em] text-muted uppercase">{v.area} · {v.conviction} conviction</span>
+                    <span className="flex items-baseline gap-2">
+                      <span className="text-xs font-semibold tracking-[.06em] text-muted uppercase">{v.area} · {v.conviction} conviction</span>
+                      <RowId id={v.id} label="Macro view" />
+                    </span>
                     <Badge className={badge.className}>{badge.label}</Badge>
                   </div>
                   <div className="flex flex-col gap-1.5">

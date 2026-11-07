@@ -12,10 +12,11 @@ export async function checkAlerts(db: Db) {
   const holdings = await loadHoldings(db);
   const open = holdings.filter((h) => h.idr.qty.greaterThan(0));
   const { positions } = await getPositions(db);
+  const quiet = new Set(positions.filter((p) => p.ignored && p.reason === "none").map((p) => p.symbol));
 
   return {
     overweight_positions: positions
-      .filter((p) => p.reason === "cap")
+      .filter((p) => p.reason === "cap" && !p.ignored)
       .map((p) => ({ symbol: p.symbol, weight_pct: p.weight_pct, cap_pct: p.cap_pct })),
     theses_needing_review: theses.map((t) => ({
       id: t.id,
@@ -36,7 +37,7 @@ export async function checkAlerts(db: Db) {
         reason: i.reason,
         priority: i.priority,
       })),
-    positions_without_thesis: open.filter((h) => !covered.has(h.assetId)).map((h) => h.symbol),
+    positions_without_thesis: open.filter((h) => !covered.has(h.assetId) && !quiet.has(h.symbol)).map((h) => h.symbol),
     stale_prices: open.filter((h) => h.stale).map((h) => ({ symbol: h.symbol, price_date: h.priceDate })),
     unpriced_positions: open.filter((h) => !h.price).map((h) => h.symbol),
   };

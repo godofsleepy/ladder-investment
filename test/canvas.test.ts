@@ -6,8 +6,8 @@ import { addDays, today } from "../src/dates.js";
 import { closePool, getPool, withUser } from "../src/db.js";
 import { migrate } from "../src/migrate.js";
 import { Decimal } from "../src/money.js";
-import { assetOptions, getGrowth, getPositions, getPriceStatus, previewTrade } from "../src/overview.js";
-import { fillHistory } from "../src/prices/history.js";
+import { assetOptions, getGrowth, getPositions, getPriceChart, getPriceStatus, ignoreAlert, previewTrade, restoreAlert } from "../src/overview.js";
+import { fillAssetHistory, fillHistory } from "../src/prices/history.js";
 import { savePrice } from "../src/prices/store.js";
 import { createServer } from "../src/tools.js";
 import { getTradeLog } from "../src/trades.js";
@@ -362,5 +362,97 @@ describe("trade log", () => {
   it("shows nothing from another account", async () => {
     const res = await withUser(other.id, (db) => getTradeLog(db), { readOnly: true });
     expect(res.entries.some((e) => e.symbol === "UNVR.JK")).toBe(false);
+  });
+});
+
+describe("ignoring position alerts", () => {
+  let client: Client;
+  let owner: User;
+  const write = <T>(fn: (db: Parameters<Parameters<typeof withUser>[1]>[0]) => Promise<T>) => withUser(owner.id, fn);
+  const position = async (symbol: string) => {
+    const { positions } = await write((db) => getPositions(db));
+    return positions.find((p) => p.symbol === symbol);
+  };
+
+  beforeAll(async () => {
+    owner = await createUser(getPool(), { email: "ignore@example.com", name: "Ignore", password: "correct horse" });
+    client = await connect(owner.id);
+    await call(client, "log_trade", { symbol: "BBRI.JK", type: "buy", qty: 100, price: 4000 });
+    await call(client, "set_price", { symbol: "BBRI.JK", price: 3900 });
+  });
+
+  afterAll(async () => {
+    await client.close();
+    await deleteUser(getPool(), owner.id);
+  });
+
+  it("hides the alert, for the dashboard and for check_alerts, until restored", async () => {
+    expect(await position("BBRI.JK")).toMatchObject({ state: "missing", ignored: false });
+    await write((db) => ignoreAlert(db, "BBRI.JK"));
+    expect(await position("BBRI.JK")).toMatchObject({ state: "missing", ignored: true });
+    expect((await call(client, "check_alerts")).positions_without_thesis).toEqual([]);
+
+    await write((db) => restoreAlert(db, "BBRI.JK"));
+    expect(await position("BBRI.JK")).toMatchObject({ ignored: false });
+    expect((await call(client, "check_alerts")).positions_without_thesis).toEqual(["BBRI.JK"]);
+  });
+
+  it("shows a different alert on the same asset, and a new level of the same one", async () => {
+    await write((db) => ignoreAlert(db, "BBRI.JK"));
+    await call(client, "save_thesis", { symbol: "BBRI.JK", title: "Recovery", why: "", kill_criteria: "NPL", horizon: "1y", conviction: 3, kill_price: 4000 });
+    expect(await position("BBRI.JK")).toMatchObject({ state: "alert", reason: "kill", ignored: false });
+
+    await write((db) => ignoreAlert(db, "BBRI.JK"));
+    expect(await position("BBRI.JK")).toMatchObject({ ignored: true });
+    await getPool().query("update theses set kill_price = 3950 where user_id = $1", [owner.id]);
+    expect(await position("BBRI.JK")).toMatchObject({ state: "alert", ignored: false });
+  });
+
+  it("refuses when there's nothing to ignore, and stays in its own account", async () => {
+    await expect(write((db) => ignoreAlert(db, "TLKM.JK"))).rejects.toThrow("no alert to ignore");
+    await withUser(other.id, (db) => restoreAlert(db, "BBRI.JK"));
+    await write((db) => ignoreAlert(db, "BBRI.JK"));
+    await withUser(other.id, (db) => restoreAlert(db, "BBRI.JK"));
+    expect(await position("BBRI.JK")).toMatchObject({ ignored: true });
+  });
+});
+
+describe("asset price chart", () => {
+  it("fetches history for an asset that's only on the watchlist, once, keeping stored prices", async () => {
+    const watcher = await createUser(getPool(), { email: "chart@example.com", name: "Chart", password: "correct horse" });
+    const client = await connect(watcher.id);
+    const d = (n: number) => addDays(day, -n);
+    history = { META: [[d(400), 500], [d(30), 600], [d(1), 700], [day, 999]] };
+    await call(client, "add_to_watchlist", { symbol: "META", asset_class: "us_stock", zone_low: 100, zone_high: 200, reason: "Waiting" });
+    await withUser(watcher.id, async (db) => {
+      const { rows } = await db.query("select * from assets where symbol = 'META'");
+      await savePrice(db, rows[0], day, new Decimal(710), "test");
+    });
+
+    const read1 = () => withUser(watcher.id, (db) => getPriceChart(db, "META"), { readOnly: true });
+    expect((await read1()).needs_history).toBe(true);
+
+    await withUser(watcher.id, (db) => fillAssetHistory(db, "META"));
+    const after = await read1();
+    expect(after.needs_history).toBe(false);
+    expect(after.points.map((p) => p.close)).toEqual([500, 600, 700, 710]);
+    expect(after.points[0]?.date).toBe(d(400));
+
+    await client.close();
+    await deleteUser(getPool(), watcher.id);
+    history = {};
+  });
+
+  it("never asks a feed for a manual asset, and reports a failed fetch without marking it done", async () => {
+    const owner = await createUser(getPool(), { email: "chart2@example.com", name: "Chart", password: "correct horse" });
+    await withUser(owner.id, (db) => db.query("insert into assets (symbol, name, class, currency, price_source) values ('HOUSE','House','other','IDR','manual'), ('AAPL','Apple','us_stock','USD','yahoo')"));
+    expect((await withUser(owner.id, (db) => getPriceChart(db, "HOUSE"))).needs_history).toBe(false);
+
+    const real = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("no", { status: 500 })));
+    await expect(withUser(owner.id, (db) => fillAssetHistory(db, "AAPL"))).rejects.toThrow("Couldn't fetch AAPL's price history");
+    vi.stubGlobal("fetch", real);
+    expect((await withUser(owner.id, (db) => getPriceChart(db, "AAPL"))).needs_history).toBe(true);
+    await deleteUser(getPool(), owner.id);
   });
 });

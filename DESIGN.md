@@ -30,3 +30,5 @@ The source of truth is the Ladder design canvas: https://claude.ai/artifact/ThhQ
 - The Trade log's Cash filter reads "Deposits & fees". Ladder has no cash ledger: a deposit brings a holding in at cost, so there are no cash deposits or withdrawals to show.
 - Trade log net amounts include fees, and USD trades convert at the rate on the trade date, where the canvas uses gross amounts at today's rate.
 - Phones get a five-item bottom bar, with "Trades" as the short label and counts on the item's corner.
+- Position alerts add an Ignore button and an ignored list with Restore, which the canvas doesn't draw. Ignoring hides that one alert, so a new level or the next review still shows.
+- The asset page adds a Price card in the Growth chart's style, up to five years of daily closes. The canvas has no chart there.

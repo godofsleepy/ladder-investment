@@ -1,10 +1,11 @@
 import { today } from "@ladder/dates";
 import Link from "next/link";
 import { PageActions } from "@/components/PageActions";
+import { PriceChart } from "@/components/PriceChart";
 import { ThesisActions } from "@/components/ThesisActions";
-import { Badge, eyebrow } from "@/components/ui";
+import { Badge, eyebrow, RowId } from "@/components/ui";
 import { capitalize, classLabel, convictionWord, fd, moneyOf, nat, pc, pct1, POSITION_BADGE, positionWhy, qf, refreshedLabel } from "@/lib/format";
-import { assetDetail, assets, moneySetting, positions, priceStatus, type Review, type Trade } from "@/lib/ladder";
+import { assetDetail, assets, moneySetting, positions, priceChart, priceStatus, type Review, type Trade } from "@/lib/ladder";
 
 const FEEDS: Record<string, string> = { coingecko: "CoinGecko", yahoo: "Yahoo Finance", xau: "XAU spot", manual: "Manual" };
 const BACK: Record<string, { href: string; label: string }> = {
@@ -24,7 +25,7 @@ export default async function AssetPage({ params, searchParams }: { params: Prom
   const { symbol } = await params;
   const { from } = await searchParams;
   const d = await assetDetail(decodeURIComponent(symbol));
-  const [{ positions: open }, options, base, status] = await Promise.all([positions(), assets(), moneySetting(), priceStatus()]);
+  const [{ positions: open }, options, base, status, chart] = await Promise.all([positions(), assets(), moneySetting(), priceStatus(), priceChart(d.asset.symbol)]);
   const { money, signed } = moneyOf(base);
   const back = BACK[from ?? ""] ?? { href: "/", label: "Portfolio" };
 
@@ -89,10 +90,15 @@ export default async function AssetPage({ params, searchParams }: { params: Prom
         </section>
       ) : null}
 
+      <PriceChart symbol={a.symbol} currency={a.currency} points={chart.points} needsHistory={chart.needs_history} />
+
       <section className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,380px),1fr))] items-start gap-4">
         <div className="card flex flex-col gap-4 p-5">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="m-0 text-[17px] font-bold">Thesis</h2>
+            <span className="flex items-baseline gap-2">
+              <h2 className="m-0 text-[17px] font-bold">Thesis</h2>
+              {t ? <RowId id={t.id} label="Thesis" /> : null}
+            </span>
             {t?.status === "draft" ? <Badge className="bg-fill text-ink-2">Draft</Badge> : badge ? <Badge className={badge.className}>{badge.label}</Badge> : null}
           </div>
 
@@ -146,7 +152,10 @@ export default async function AssetPage({ params, searchParams }: { params: Prom
         <div className="flex flex-col gap-4">
           {w ? (
             <div className="card flex flex-col gap-1 p-5">
-              <h2 className="m-0 text-[17px] font-bold">Buy zone</h2>
+              <span className="flex items-baseline gap-2">
+                <h2 className="m-0 text-[17px] font-bold">Buy zone</h2>
+                <RowId id={w.id} label="Watchlist item" />
+              </span>
               <p className="m-0 text-sm text-ink-2 tabular-nums">{nat(a.currency, w.zone_low)} – {nat(a.currency, w.zone_high)}</p>
               <p className="m-0 text-[13px] text-pretty text-muted">{w.reason}</p>
             </div>
@@ -160,7 +169,10 @@ export default async function AssetPage({ params, searchParams }: { params: Prom
             {trades.length === 0 ? <div className="border-t border-line-soft px-5 py-4 text-sm text-muted">No trades yet.</div> : null}
             {trades.map((tr) => (
               <div key={tr.id} className="grid grid-cols-[76px_40px_minmax(0,1fr)_auto] items-center gap-2.5 border-t border-line-soft px-5 py-2.5 text-sm tabular-nums">
-                <span className="text-[13px] text-muted">{fd(tr.date)}</span>
+                <span className="flex flex-col text-[13px] text-muted">
+                  {fd(tr.date)}
+                  <RowId id={tr.id} label="Trade" />
+                </span>
                 <span className="font-semibold">{capitalize(tr.type)}</span>
                 <span className="text-ink-2">{qf(tr.qty, a.symbol, a.class)} @ {nat(tr.currency, tr.price)}</span>
                 <span className="font-semibold">{nat(tr.currency, Number(tr.qty) * Number(tr.price))}</span>
@@ -176,7 +188,7 @@ export default async function AssetPage({ params, searchParams }: { params: Prom
             {notes.length === 0 ? <div className="border-t border-line-soft px-5 py-4 text-sm text-muted">No notes yet.</div> : null}
             {notes.map((note) => (
               <div key={note.id} className="flex flex-col gap-1 border-t border-line-soft px-5 py-3">
-                <span className="text-xs text-muted">{fd(note.created_at)} · {note.author}</span>
+                <span className="flex flex-wrap items-baseline gap-x-2 text-xs text-muted">{fd(note.created_at)} · {note.author} <RowId id={note.id} label="Note" /></span>
                 <span className="text-sm leading-normal text-pretty">{note.body}</span>
               </div>
             ))}

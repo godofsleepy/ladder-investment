@@ -17,6 +17,15 @@ export function Empty({ title, children }: { title: string; children: React.Reac
   );
 }
 
+/** A record's id, so it can be named to an AI assistant: "delete trade #82". */
+export function RowId({ id, label }: { id: number; label: string }) {
+  return (
+    <span title={`${label} #${id}: mention it to your AI assistant`} className="text-xs font-normal whitespace-nowrap text-muted tabular-nums">
+      <span className="sr-only">{label} </span>#{id}
+    </span>
+  );
+}
+
 export const eyebrow = "text-[13px] font-semibold uppercase tracking-[.06em] text-muted";
 
 export function Badge({ className, children }: { className: string; children: React.ReactNode }) {

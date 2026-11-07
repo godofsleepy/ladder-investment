@@ -3,7 +3,8 @@ import type { AssetClass } from "@ladder/assets";
 import { withUser, type Db } from "@ladder/db";
 import { addNote } from "@ladder/journal";
 import { LadderError } from "@ladder/money";
-import { previewTrade } from "@ladder/overview";
+import { ignoreAlert, previewTrade, restoreAlert } from "@ladder/overview";
+import { fillAssetHistory } from "@ladder/prices/history";
 import { refreshPrices } from "@ladder/prices/refresh";
 import { editThesis, reviewThesis, saveThesis, type ReviewEvery } from "@ladder/thesis";
 import { logTrade, settleTrade } from "@ladder/trades";
@@ -125,5 +126,26 @@ export async function refreshAction(): Promise<Result> {
     const count = res.updated.filter((u) => u.symbol !== "USDIDR").length;
     if (res.failed.length > 0) return `Refreshed ${count}. Couldn't fetch ${res.failed.map((f) => f.symbol).join(", ")}`;
     return `Prices refreshed · ${count} ${count === 1 ? "asset" : "assets"}`;
+  });
+}
+
+export async function ignoreAlertAction(symbol: string): Promise<Result> {
+  return act(async (userId) => {
+    await withUser(userId, (db) => ignoreAlert(db, symbol));
+    return `${symbol} alert ignored`;
+  });
+}
+
+export async function restoreAlertAction(symbol: string): Promise<Result> {
+  return act(async (userId) => {
+    await withUser(userId, (db) => restoreAlert(db, symbol));
+    return `${symbol} alert restored`;
+  });
+}
+
+export async function loadPriceHistoryAction(symbol: string): Promise<Result> {
+  return act(async (userId) => {
+    await withUser(userId, (db) => fillAssetHistory(db, symbol));
+    return "Price history loaded";
   });
 }

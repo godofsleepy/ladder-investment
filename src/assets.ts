@@ -12,6 +12,8 @@ export interface Asset {
   currency: "IDR" | "USD";
   price_source: PriceSource;
   source_id: string | null;
+  ignored_alert?: string | null;
+  history_filled_at?: Date | null;
 }
 
 export interface NewAssetHints {

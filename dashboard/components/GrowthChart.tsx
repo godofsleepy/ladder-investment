@@ -20,7 +20,7 @@ const RANGES: Array<{ key: Range; label: string; months: number | null }> = [
 const LINE_COLORS = ["#c26a00", "#2f8a3a", "#7a4fd0", "#0a8a9a", "#c2387a", "var(--color-muted)", "#9a6b00", "#b8860b", "var(--color-ink-2)"];
 const ALL = "__portfolio";
 
-function cutoff(last: string, months: number): string {
+export function cutoff(last: string, months: number): string {
   const d = new Date(`${last}T00:00:00Z`);
   d.setUTCMonth(d.getUTCMonth() - months);
   return d.toISOString().slice(0, 10);
@@ -32,7 +32,7 @@ function axisStep(top: number): number {
   return [1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 7.5, 10].map((m) => m * magnitude).find((s) => s * 3 >= top) ?? top / 3;
 }
 
-const pathOf = (values: Array<number | null>, x: (i: number) => number, y: (v: number) => number) => {
+export const pathOf = (values: Array<number | null>, x: (i: number) => number, y: (v: number) => number) => {
   let d = "";
   let pen = false;
   values.forEach((v, i) => {
