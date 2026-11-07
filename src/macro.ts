@@ -10,15 +10,16 @@ export interface Signal {
   text: string;
 }
 
+/** On an update, any field left out keeps its saved value. Adding a view needs the first five. */
 export interface SaveMacroView {
   id?: number;
-  short_name: string;
-  area: string;
-  conviction: "High" | "Medium" | "Low";
+  short_name?: string;
+  area?: string;
+  conviction?: "High" | "Medium" | "Low";
   status?: "holding" | "weak" | "broken";
-  view: string;
+  view?: string;
   why?: string;
-  wrong_if: string;
+  wrong_if?: string;
   signals?: Signal[];
   symbols?: string[];
   next_review?: string;
@@ -37,8 +38,24 @@ interface ViewRow {
   next_review: string;
 }
 
+const REQUIRED = ["short_name", "area", "conviction", "view", "wrong_if"] as const;
+
 export async function saveMacroView(db: Db, input: SaveMacroView) {
-  const nextReview = input.next_review ? assertDate(input.next_review, "next_review") : addMonths(today(), 3);
+  let current: ViewRow | undefined;
+  if (input.id) {
+    const { rows } = await db.query<ViewRow>(
+      "select id, short_name, area, conviction, status, view, why, wrong_if, signals, next_review from macro_views where id = $1",
+      [input.id],
+    );
+    current = rows[0];
+    if (!current) throw new LadderError(`No macro view ${input.id}`);
+  } else {
+    const missing = REQUIRED.filter((key) => !input[key]);
+    if (missing.length > 0) throw new LadderError(`A new macro view needs ${missing.join(", ")}`);
+  }
+  const nextReview = input.next_review
+    ? assertDate(input.next_review, "next_review")
+    : (current?.next_review ?? addMonths(today(), 3));
   const assetIds: number[] = [];
   for (const symbol of input.symbols ?? []) {
     const asset = await findAsset(db, symbol);
@@ -46,14 +63,14 @@ export async function saveMacroView(db: Db, input: SaveMacroView) {
     assetIds.push(asset.id);
   }
   const values = [
-    input.short_name,
-    input.area,
-    input.conviction,
-    input.status ?? "holding",
-    input.view,
-    input.why ?? "",
-    input.wrong_if,
-    JSON.stringify(input.signals ?? []),
+    input.short_name ?? current?.short_name,
+    input.area ?? current?.area,
+    input.conviction ?? current?.conviction,
+    input.status ?? current?.status ?? "holding",
+    input.view ?? current?.view,
+    input.why ?? current?.why ?? "",
+    input.wrong_if ?? current?.wrong_if,
+    JSON.stringify(input.signals ?? current?.signals ?? []),
     nextReview,
   ];
   const saved = input.id

@@ -371,22 +371,22 @@ export function createServer({ userId, access }: Identity): McpServer {
     "save_macro_view",
     {
       description:
-        'Add a macro view, or update one by passing id. Example: short_name "Weak rupiah", area "Currency", view "The rupiah keeps losing ground through 2027". status is holding, weak or broken; a view past its review date shows as review due by itself. symbols lists the holdings riding on it and replaces the old list when given.',
+        'Add a macro view, or update one by passing id. Adding needs short_name, area, conviction, view and wrong_if; an update changes only the fields you pass and keeps the rest. Example: short_name "Weak rupiah", area "Currency", view "The rupiah keeps losing ground through 2027". status is holding, weak or broken; a view past its review date shows as review due by itself. symbols lists the holdings riding on it and replaces the old list when given; leave it out to keep the links. signals also replaces the whole list when given.',
       inputSchema: {
         id: z.number().int().optional().describe("Leave out to add a new view"),
-        short_name: z.string().max(24).describe("A short label for the Holdings table"),
-        area: z.string().max(40).describe("Currency, Technology, Indonesia, Global..."),
-        conviction: z.enum(["High", "Medium", "Low"]),
+        short_name: z.string().max(24).optional().describe("A short label for the Holdings table. Required when adding"),
+        area: z.string().max(40).optional().describe("Currency, Technology, Indonesia, Global... Required when adding"),
+        conviction: z.enum(["High", "Medium", "Low"]).optional().describe("Required when adding"),
         status: z.enum(["holding", "weak", "broken"]).optional(),
-        view: z.string().describe("The belief, in one sentence"),
+        view: z.string().optional().describe("The belief, in one sentence. Required when adding"),
         why: z.string().optional(),
-        wrong_if: z.string().describe("What would prove this view wrong"),
+        wrong_if: z.string().optional().describe("What would prove this view wrong. Required when adding"),
         signals: z
           .array(z.object({ kind: z.enum(["for", "against", "watch"]), text: z.string() }))
           .optional()
           .describe("Evidence for or against it, and things to watch"),
         symbols: z.array(symbol).optional().describe("Holdings riding on this view"),
-        next_review: date.optional().describe("YYYY-MM-DD, defaults to 3 months from today"),
+        next_review: date.optional().describe("YYYY-MM-DD. A new view defaults to 3 months from today; an update keeps its date"),
       },
     },
     (input) => run(() => tx((db) => saveMacroView(db, input))),

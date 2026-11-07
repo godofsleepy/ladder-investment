@@ -166,6 +166,21 @@ describe("macro views", () => {
     expect(positions.find((p) => p.symbol === "BBCA.JK")?.macro?.short_name).toBe("Rate cuts");
   });
 
+  it("changes only the fields an update passes", async () => {
+    const view = await call(mcp, "save_macro_view", {
+      short_name: "Keep me", area: "Global", conviction: "High", status: "weak", view: "Original view", why: "Original why",
+      wrong_if: "Original wrong", signals: [{ kind: "for", text: "A signal" }], symbols: ["BBRI.JK"], next_review: addDays(day, 40),
+    });
+    const updated = await call(mcp, "save_macro_view", { id: view.id, conviction: "Low" });
+    expect(updated).toMatchObject({
+      short_name: "Keep me", area: "Global", conviction: "Low", status: "weak", view: "Original view", why: "Original why",
+      wrong_if: "Original wrong", signals: [{ kind: "for", text: "A signal" }], symbols: ["BBRI.JK"], next_review: addDays(day, 40),
+    });
+    expect((await call(mcp, "save_macro_view", { id: view.id, symbols: [] })).symbols).toEqual([]);
+    await expect(call(mcp, "save_macro_view", { short_name: "New", area: "Global" })).rejects.toThrow("A new macro view needs conviction, view, wrong_if");
+    await call(mcp, "delete_macro_view", { id: view.id });
+  });
+
   it("keeps macro views private to their account", async () => {
     const bob = await connect(other.id);
     expect(await call(bob, "get_macro_views")).toEqual([]);
