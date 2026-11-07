@@ -2,8 +2,8 @@
 import Link from "next/link";
 import { useTransition } from "react";
 import { ignoreAlertAction, restoreAlertAction, type Result } from "@/app/(app)/actions";
-import { positionContext } from "@/lib/context";
-import { POSITION_BADGE, positionWhy, type Money } from "@/lib/format";
+import { holdingRef } from "@/lib/context";
+import { POSITION_BADGE, positionWhy } from "@/lib/format";
 import type { Position } from "@/lib/ladder";
 import { CopyContext } from "./CopyContext";
 import { useToast } from "./Toast";
@@ -11,7 +11,7 @@ import { Badge } from "./ui";
 
 const smallButton = "min-h-11 shrink-0 rounded-lg bg-fill px-2.5 text-xs font-semibold text-ink-2 hover:bg-fill-strong disabled:opacity-60 sm:min-h-8";
 
-export function PositionAlerts({ alerts, ignored, base }: { alerts: Position[]; ignored: Position[]; base: Money }) {
+export function PositionAlerts({ alerts, ignored }: { alerts: Position[]; ignored: Position[] }) {
   const [pending, start] = useTransition();
   const { say, toast } = useToast();
   const run = (action: Promise<Result>) =>
@@ -36,7 +36,7 @@ export function PositionAlerts({ alerts, ignored, base }: { alerts: Position[]; 
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="flex items-center gap-2">
                     <Link href={`/assets/${p.symbol}`} className="text-sm font-semibold text-ink after:absolute after:inset-0 after:content-[''] hover:text-ink">{p.symbol}</Link>
-                    <CopyContext label={`${p.symbol} holding`} text={positionContext(p, base)} />
+                    <CopyContext label={`${p.symbol} holding`} text={holdingRef(p.symbol)} />
                   </span>
                   <span className="text-[13px] text-pretty text-ink-2">{positionWhy(p)}</span>
                 </span>

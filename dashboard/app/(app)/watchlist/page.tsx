@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { CopyContext } from "@/components/CopyContext";
 import { Badge, Empty, PageTitle, Tally } from "@/components/ui";
-import { watchContext } from "@/lib/context";
+import { watchRef } from "@/lib/context";
 import { distanceText, fd, nat, WATCH_BADGE, watchKind, type WatchKind } from "@/lib/format";
 import { watchlist } from "@/lib/ladder";
 
@@ -40,7 +40,7 @@ export default async function WatchlistPage() {
                       <span className="flex min-w-0 flex-col gap-[3px] text-left">
                         <span className="flex items-baseline gap-2">
                           <Link href={`/assets/${w.symbol}?from=watchlist`} className="font-bold text-ink after:absolute after:inset-0 after:content-[''] hover:text-ink">{w.symbol}</Link>
-                          <CopyContext id={w.id} label={`watchlist item #${w.id}`} text={watchContext(w, kind, distance)} />
+                          <CopyContext id={w.id} label={`watchlist item #${w.id}`} text={watchRef(w.id, w.symbol)} />
                           {w.name !== w.symbol ? <span className="truncate text-xs text-muted">{w.name}</span> : null}
                         </span>
                         <span className="text-[13px] leading-[1.4] text-pretty text-ink-2">{w.reason}</span>

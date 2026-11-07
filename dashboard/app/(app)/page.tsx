@@ -101,7 +101,7 @@ export default async function PortfolioPage() {
           </div>
         </div>
 
-        <PositionAlerts alerts={alerts} ignored={ignored} base={base} />
+        <PositionAlerts alerts={alerts} ignored={ignored} />
       </section>
 
       <HoldingsTable positions={open} base={base} />

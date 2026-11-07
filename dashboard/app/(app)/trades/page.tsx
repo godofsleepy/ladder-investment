@@ -4,7 +4,7 @@ import { PageActions } from "@/components/PageActions";
 import { TradeFilters } from "@/components/TradeFilters";
 import { CopyContext } from "@/components/CopyContext";
 import { Empty } from "@/components/ui";
-import { tradeContext } from "@/lib/context";
+import { tradeRef } from "@/lib/context";
 import { capitalize, fullDate, moneyOf, monthYear, nat, qf } from "@/lib/format";
 import { assets, moneySetting, positions, tradeLog } from "@/lib/ladder";
 
@@ -73,7 +73,7 @@ export default async function TradesPage({ searchParams }: { searchParams: Promi
                           <Link href={`/assets/${encodeURIComponent(t.symbol)}?from=trades`} className={`font-bold ${TONE[t.type] ?? ""}`}>
                             {capitalize(t.type)} {t.symbol}
                           </Link>
-                          <CopyContext id={t.id} label={`trade #${t.id}`} text={tradeContext(t, base)} />
+                          <CopyContext id={t.id} label={`trade #${t.id}`} text={tradeRef(t.id, t.type, t.symbol, t.date)} />
                         </span>
                         <span className="flex flex-col items-end gap-px">
                           <span>{nat(t.currency, t.net)}</span>

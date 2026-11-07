@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { CLASSES, MACRO_BADGE, moneyOf, nat, pct1, qf, type Money } from "@/lib/format";
-import { positionContext } from "@/lib/context";
+import { holdingRef } from "@/lib/context";
 import type { Position } from "@/lib/ladder";
 import { CopyContext } from "./CopyContext";
 import { Badge } from "./ui";
@@ -58,7 +58,7 @@ export function HoldingsTable({ positions, base }: { positions: Position[]; base
                   <span className="flex min-w-0 flex-col text-left">
                     <span className="flex items-center gap-2">
                       <Link href={`/assets/${p.symbol}`} className="font-semibold text-ink after:absolute after:inset-0 after:content-[''] hover:text-ink">{p.symbol}</Link>
-                      <CopyContext label={`${p.symbol} holding`} text={positionContext(p, base)} />
+                      <CopyContext label={`${p.symbol} holding`} text={holdingRef(p.symbol)} />
                     </span>
                     {p.name !== p.symbol ? <span className="truncate text-xs text-muted">{p.name}</span> : null}
                   </span>

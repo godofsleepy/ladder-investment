@@ -5,8 +5,8 @@ import { PriceChart } from "@/components/PriceChart";
 import { ThesisActions } from "@/components/ThesisActions";
 import { CopyContext } from "@/components/CopyContext";
 import { Badge, eyebrow } from "@/components/ui";
-import { assetContext, noteContext, positionContext, thesisContext, tradeContext, watchContext, type ThesisLike, type WatchItem } from "@/lib/context";
-import { capitalize, classLabel, convictionWord, fd, moneyOf, nat, pc, pct1, POSITION_BADGE, positionWhy, qf, refreshedLabel, distanceText, watchKind } from "@/lib/format";
+import { assetRef, noteRef, thesisRef, tradeRef, watchRef } from "@/lib/context";
+import { capitalize, classLabel, convictionWord, fd, moneyOf, nat, pc, pct1, POSITION_BADGE, positionWhy, qf, refreshedLabel } from "@/lib/format";
 import { assetDetail, assets, moneySetting, positions, priceChart, priceStatus, type Review, type Trade } from "@/lib/ladder";
 
 const FEEDS: Record<string, string> = { coingecko: "CoinGecko", yahoo: "Yahoo Finance", xau: "XAU spot", manual: "Manual" };
@@ -45,28 +45,6 @@ export default async function AssetPage({ params, searchParams }: { params: Prom
   const over = position?.reason === "cap";
   const every = t ? capitalize(t.review_every) : "";
 
-  const watchDistance = w ? distanceText(w.distance_side, w.distance_pct) : "";
-  const copy = {
-    position: position ? positionContext(position, base) : null,
-    thesis: t ? thesisContext(t as unknown as ThesisLike, a.symbol, a.currency) : null,
-    watch: w ? watchContext(w as unknown as WatchItem, watchKind(w.distance_side, w.distance_pct), watchDistance) : null,
-    trades: trades.map((tr) => tradeContext({ ...tr, symbol: a.symbol, class: a.class })),
-    notes: notes.map((n) => noteContext({ id: n.id, text: n.body, symbol: a.symbol, author: n.author, created_at: n.created_at })),
-  };
-  const everything = assetContext({
-    symbol: a.symbol,
-    name: a.name,
-    cls: a.class,
-    currency: a.currency,
-    price,
-    feed: FEEDS[a.price_source] ?? a.price_source,
-    position: copy.position,
-    thesis: copy.thesis,
-    watch: copy.watch,
-    trades: copy.trades.slice(0, 10),
-    tradeCount: trades.length,
-    notes: copy.notes.slice(0, 5),
-  });
 
   const stats = position
     ? [
@@ -101,7 +79,7 @@ export default async function AssetPage({ params, searchParams }: { params: Prom
           <span className="text-[13px] text-muted">{FEEDS[a.price_source] ?? a.price_source} · {refreshedLabel(status.refreshed_at)}</span>
         </div>
         <div className="flex flex-wrap gap-2">
-          <CopyContext wide label={`everything on ${a.symbol}`} text={everything} />
+          <CopyContext wide label={a.symbol} text={assetRef(a.symbol)} />
           <PageActions assets={options} today={today()} defaultSymbol={a.symbol} />
         </div>
       </header>
@@ -125,7 +103,7 @@ export default async function AssetPage({ params, searchParams }: { params: Prom
           <div className="flex items-center justify-between gap-3">
             <span className="flex items-center gap-2">
               <h2 className="m-0 text-[17px] font-bold">Thesis</h2>
-              {t && copy.thesis ? <CopyContext id={t.id} label={`thesis #${t.id}`} text={copy.thesis} /> : null}
+              {t ? <CopyContext id={t.id} label={`thesis #${t.id}`} text={thesisRef(t.id, a.symbol)} /> : null}
             </span>
             {t?.status === "draft" ? <Badge className="bg-fill text-ink-2">Draft</Badge> : badge ? <Badge className={badge.className}>{badge.label}</Badge> : null}
           </div>
@@ -182,7 +160,7 @@ export default async function AssetPage({ params, searchParams }: { params: Prom
             <div className="card flex flex-col gap-1 p-5">
               <span className="flex items-center gap-2">
                 <h2 className="m-0 text-[17px] font-bold">Buy zone</h2>
-                {copy.watch ? <CopyContext id={w.id} label={`watchlist item #${w.id}`} text={copy.watch} /> : null}
+                <CopyContext id={w.id} label={`watchlist item #${w.id}`} text={watchRef(w.id, a.symbol)} />
               </span>
               <p className="m-0 text-sm text-ink-2 tabular-nums">{nat(a.currency, w.zone_low)} – {nat(a.currency, w.zone_high)}</p>
               <p className="m-0 text-[13px] text-pretty text-muted">{w.reason}</p>
@@ -195,11 +173,11 @@ export default async function AssetPage({ params, searchParams }: { params: Prom
               <span className="text-[13px] text-muted">{trades.length} {trades.length === 1 ? "trade" : "trades"}</span>
             </div>
             {trades.length === 0 ? <div className="border-t border-line-soft px-5 py-4 text-sm text-muted">No trades yet.</div> : null}
-            {trades.map((tr, i) => (
+            {trades.map((tr) => (
               <div key={tr.id} className="grid grid-cols-[76px_40px_minmax(0,1fr)_auto] items-center gap-2.5 border-t border-line-soft px-5 py-2.5 text-sm tabular-nums">
                 <span className="flex flex-col items-start gap-1 text-[13px] text-muted">
                   {fd(tr.date)}
-                  <CopyContext id={tr.id} label={`trade #${tr.id}`} text={copy.trades[i] as string} />
+                  <CopyContext id={tr.id} label={`trade #${tr.id}`} text={tradeRef(tr.id, tr.type, a.symbol, tr.date)} />
                 </span>
                 <span className="font-semibold">{capitalize(tr.type)}</span>
                 <span className="text-ink-2">{qf(tr.qty, a.symbol, a.class)} @ {nat(tr.currency, tr.price)}</span>
@@ -214,9 +192,9 @@ export default async function AssetPage({ params, searchParams }: { params: Prom
               {notes.length > 0 ? <span className="text-[13px] text-muted">{notes.length}</span> : null}
             </div>
             {notes.length === 0 ? <div className="border-t border-line-soft px-5 py-4 text-sm text-muted">No notes yet.</div> : null}
-            {notes.map((note, i) => (
+            {notes.map((note) => (
               <div key={note.id} className="flex flex-col gap-1 border-t border-line-soft px-5 py-3">
-                <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted">{fd(note.created_at)} · {note.author} <CopyContext id={note.id} label={`note #${note.id}`} text={copy.notes[i] as string} /></span>
+                <span className="flex flex-wrap items-center gap-x-2 text-xs text-muted">{fd(note.created_at)} · {note.author} <CopyContext id={note.id} label={`note #${note.id}`} text={noteRef(note.id, a.symbol)} /></span>
                 <span className="text-sm leading-normal text-pretty">{note.body}</span>
               </div>
             ))}
