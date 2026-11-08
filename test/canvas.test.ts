@@ -513,6 +513,9 @@ describe("macro view detail", () => {
     expect(viaTool.symbols).toEqual(["BBCA.JK"]);
     expect((await w((db) => getMacroView(db, view.id))).assets.map((a) => a.symbol)).toEqual(["BBCA.JK", "ANTM.JK", "TSM"]);
     await expect(call(client, "save_macro_view", { id: view.id, symbols: ["AVGO"] })).rejects.toThrow(/Don't know what AVGO is/);
+    const asText = await call(client, "save_macro_view", { id: view.id, symbols: ["BBCA.JK", "AVGO"], asset_classes: '{"AVGO": "us_stock"}' });
+    expect(asText.id).toBe(view.id);
+    expect((await w((db) => getMacroView(db, view.id))).assets.map((a) => a.symbol)).toEqual(["BBCA.JK", "AVGO"]);
     await expect(withUser(other.id, (db) => getMacroView(db, view.id))).rejects.toThrow(`No macro view ${view.id}`);
     await expect(withUser(other.id, (db) => linkMacroAsset(db, view.id, "BBCA.JK"))).rejects.toThrow("No macro view");
     await expect(withUser(other.id, (db) => unlinkMacroAsset(db, view.id, "BBCA.JK"))).rejects.toThrow("No macro view");

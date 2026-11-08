@@ -388,7 +388,15 @@ export function createServer({ userId, access }: Identity): McpServer {
           .describe("Evidence for or against it, and things to watch"),
         symbols: z.array(symbol).optional().describe("Stocks this view affects, held or not"),
         asset_classes: z
-          .record(z.string(), assetClass)
+          // A client with an older copy of this schema sends the object as JSON text.
+          .preprocess((v) => {
+            if (typeof v !== "string") return v;
+            try {
+              return JSON.parse(v);
+            } catch {
+              return v;
+            }
+          }, z.record(z.string(), assetClass))
           .optional()
           .describe('Class of each symbol Ladder hasn\'t seen yet, e.g. {"NVDA": "us_stock", "TSM": "us_stock"}'),
         next_review: date.optional().describe("YYYY-MM-DD. A new view defaults to 3 months from today; an update keeps its date"),
