@@ -4,18 +4,18 @@ import { CopyContext } from "@/components/CopyContext";
 import { LinkAsset, UnlinkAsset } from "@/components/MacroLinks";
 import { Badge, eyebrow } from "@/components/ui";
 import { holdingRef, macroRef } from "@/lib/context";
-import { distanceText, fd, MACRO_BADGE, moneyOf, nat, pc, pct1, POSITION_BADGE, qf, WATCH_BADGE, watchKind } from "@/lib/format";
+import { distanceText, fd, MACRO_BADGE, MINUS, moneyOf, nat, pc, pct1, POSITION_BADGE, qf, WATCH_BADGE, watchKind } from "@/lib/format";
 import { assets, macroView, moneySetting } from "@/lib/ladder";
 
 const SIGNAL_DOT = { for: "bg-good", against: "bg-bad", watch: "bg-faint" } as const;
 const SIGNAL_WORD = { for: "For", against: "Against", watch: "Watching" } as const;
-const GRID = "grid grid-cols-[minmax(150px,1.6fr)_minmax(120px,1.2fr)_minmax(100px,1fr)_minmax(80px,.7fr)_minmax(100px,1fr)_minmax(96px,auto)_72px] gap-3";
+const GRID = "grid grid-cols-[minmax(150px,1.6fr)_minmax(120px,1.2fr)_minmax(96px,1fr)_minmax(96px,1fr)_minmax(100px,1fr)_minmax(96px,auto)_72px] gap-3";
 
 export default async function MacroViewPage({ params }: { params: Promise<{ id: string }> }) {
   const id = Number((await params).id);
   if (!Number.isInteger(id) || id <= 0) notFound();
   const [v, options, base] = await Promise.all([macroView(id), assets(), moneySetting()]);
-  const { money, signed } = moneyOf(base);
+  const { money } = moneyOf(base);
   const badge = MACRO_BADGE[v.state];
   const held = v.assets.filter((a) => a.position);
   const linked = new Set(v.assets.map((a) => a.symbol));
@@ -58,7 +58,7 @@ export default async function MacroViewPage({ params }: { params: Promise<{ id: 
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
           <div className="flex flex-col gap-0.5">
             <h2 id="affected" className="m-0 text-[17px] font-bold">Stocks affected</h2>
-            <span className="text-[13px] text-muted">Every stock this view moves, held or not. Held ones count towards its exposure.</span>
+            <span className="text-[13px] text-muted">Every stock this view moves, held or not, and how its price has changed since {fd(v.created_on)}.</span>
           </div>
           <LinkAsset viewId={v.id} options={options.filter((o) => !linked.has(o.symbol))} />
         </div>
@@ -70,15 +70,16 @@ export default async function MacroViewPage({ params }: { params: Promise<{ id: 
               <div className={`${GRID} border-t border-line-soft px-5 py-2 text-right text-xs font-semibold text-muted`}>
                 <span className="text-left">Asset</span>
                 <span>Position</span>
-                <span>Value</span>
-                <span>Share</span>
-                <span>P&amp;L</span>
+                <span>Start</span>
+                <span>Price</span>
+                <span>Change</span>
                 <span>Thesis</span>
                 <span className="sr-only">Actions</span>
               </div>
               {v.assets.map((a) => {
                 const p = a.position;
-                const loss = p?.unrealized_idr != null && Number(p.unrealized_idr) < 0;
+                const diff = a.price_change === null ? null : Number(a.price_change);
+                const tone = diff === null || diff === 0 ? "text-ink-2" : diff < 0 ? "text-bad" : "text-good";
                 const w = a.watch;
                 const wk = w ? watchKind(w.distance_side, w.distance_pct) : null;
                 return (
@@ -93,23 +94,23 @@ export default async function MacroViewPage({ params }: { params: Promise<{ id: 
                     {p ? (
                       <span className="flex flex-col">
                         <span className="text-ink-2">{qf(p.qty, a.symbol, a.class)}</span>
-                        <span className="text-xs text-muted">{a.price ? `at ${nat(a.currency, a.price)}` : "No price yet"}</span>
+                        {a.share_pct ? <span className="text-xs text-muted">{pc(a.share_pct)} of exposure</span> : null}
                       </span>
                     ) : (
                       <span className="flex flex-col">
                         <span className="text-ink-2">Not held</span>
-                        <span className="text-xs text-muted">
-                          {w && wk ? `Watchlist · ${distanceText(w.distance_side, w.distance_pct)}` : a.price ? `at ${nat(a.currency, a.price)}` : "No price yet"}
-                        </span>
+                        {w && wk ? (
+                          <span className="text-xs text-muted">Watchlist · {distanceText(w.distance_side, w.distance_pct)}</span>
+                        ) : null}
                       </span>
                     )}
-                    <span className="font-semibold">{p ? money(p.value_idr) : ""}</span>
-                    <span className="text-ink-2">{a.share_pct ? pc(a.share_pct) : ""}</span>
-                    <span className={`flex flex-col ${loss ? "text-bad" : "text-good"}`}>
-                      {p && p.unrealized_idr != null ? (
+                    <span className="text-ink-2">{a.start_price ? nat(a.currency, a.start_price) : "No price"}</span>
+                    <span className="font-semibold">{a.price ? nat(a.currency, a.price) : "No price"}</span>
+                    <span className={`flex flex-col ${tone}`}>
+                      {a.change_pct !== null && diff !== null ? (
                         <>
-                          <span className="font-semibold">{signed(p.unrealized_idr)}</span>
-                          <span className="text-xs">{pct1(p.unrealized_pct)}</span>
+                          <span className="font-semibold">{pct1(a.change_pct)}</span>
+                          <span className="text-xs">{diff < 0 ? MINUS : "+"}{nat(a.currency, Math.abs(diff))}</span>
                         </>
                       ) : null}
                     </span>

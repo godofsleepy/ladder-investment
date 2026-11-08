@@ -92,7 +92,7 @@ export async function getPriceChart(db: Db, symbol: string) {
   };
 }
 
-/** One macro view with every asset linked to it, held or not, and what each means for you. */
+/** One macro view with every asset linked to it, held or not, and how each has moved since the view was created. */
 export async function getMacroView(db: Db, id: number) {
   const view = (await getMacroViews(db)).find((v) => v.id === id);
   if (!view) throw new LadderError(`No macro view ${id}`);
@@ -104,17 +104,28 @@ export async function getMacroView(db: Db, id: number) {
   const { positions } = await getPositions(db);
   const watch = await getWatchlist(db, {});
   const prices = await latestPrices(db);
+  const atStart = await latestPrices(db, view.created_on);
+  const { rows: earliest } = await db.query<{ asset_id: number; close: string }>(
+    "select distinct on (asset_id) asset_id, close from prices order by asset_id, date",
+  );
+  const firstPrice = new Map(earliest.map((r) => [r.asset_id, new Decimal(r.close)]));
   const exposure = new Decimal(view.exposure_idr);
 
   const assets = linked.map((a) => {
     const p = positions.find((x) => x.symbol === a.symbol) ?? null;
     const w = watch.items.find((i) => i.symbol === a.symbol) ?? null;
+    const current = p?.price ? new Decimal(p.price) : prices.get(a.id)?.close;
+    const start = atStart.get(a.id)?.close ?? firstPrice.get(a.id);
+    const diff = current && start ? current.minus(start) : null;
     return {
       symbol: a.symbol,
       name: a.name,
       class: a.class,
       currency: a.currency,
-      price: p?.price ?? prices.get(a.id)?.close.toString() ?? null,
+      price: current?.toString() ?? null,
+      start_price: start?.toString() ?? null,
+      price_change: diff?.toString() ?? null,
+      change_pct: diff && start && start.greaterThan(0) ? pct(diff.div(start).times(100)) : null,
       position: p,
       share_pct: p?.value_idr && !exposure.isZero() ? pct(new Decimal(p.value_idr).div(exposure).times(100)) : null,
       watch: w

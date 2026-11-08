@@ -520,6 +520,26 @@ describe("macro view detail", () => {
     await expect(withUser(other.id, (db) => linkMacroAsset(db, view.id, "BBCA.JK"))).rejects.toThrow("No macro view");
     await expect(withUser(other.id, (db) => unlinkMacroAsset(db, view.id, "BBCA.JK"))).rejects.toThrow("No macro view");
 
+    // Price change is measured from when the view was created, whether the stock is held or not.
+    await getPool().query("update macro_views set created_at = $1::date where id = $2", [addDays(day, -10), view.id]);
+    await call(client, "set_price", { symbol: "BBCA.JK", price: 8000, date: addDays(day, -10) });
+    await call(client, "set_price", { symbol: "AVGO", price: 200, date: addDays(day, -10) });
+    await call(client, "set_price", { symbol: "AVGO", price: 250, date: day });
+    const moved = await withUser(owner.id, (db) => getMacroView(db, view.id), { readOnly: true });
+    expect(moved.created_on).toBe(addDays(day, -10));
+    expect(moved.assets.find((a) => a.symbol === "BBCA.JK")).toMatchObject({
+      start_price: "8000",
+      price: "9000",
+      price_change: "1000",
+      change_pct: "12.50",
+    });
+    expect(moved.assets.find((a) => a.symbol === "AVGO")).toMatchObject({
+      start_price: "200",
+      price: "250",
+      price_change: "50",
+      change_pct: "25.00",
+    });
+
     await client.close();
     await deleteUser(getPool(), owner.id);
   });

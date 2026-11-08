@@ -68,12 +68,18 @@ export async function fillAssetHistory(db: Db, symbol: string): Promise<void> {
   await db.query("update assets set history_filled_at = now() where id = $1", [asset.id]);
 }
 
-/** Fetches daily closes back to each asset's first trade, so the growth chart shows what really happened. */
+/** Fetches daily closes back to each asset's first trade or macro view, so growth and view changes show what really happened. */
 export async function fillHistory(db: Db): Promise<{ filled: string[]; failed: string[] }> {
   const { rows } = await db.query<Asset & { first_trade: string; earliest: string | null }>(
-    `select a.*, min(t.traded_at) as first_trade,
+    `select a.*, min(need.d) as first_trade,
        (select min(p.date) from prices p where p.asset_id = a.id) as earliest
-     from assets a join trades t on t.asset_id = a.id
+     from assets a
+     join (
+       select asset_id, traded_at as d from trades
+       union all
+       select m.asset_id, (v.created_at at time zone 'Asia/Jakarta')::date as d
+       from macro_holdings m join macro_views v on v.id = m.view_id
+     ) need on need.asset_id = a.id
      where a.price_source <> 'manual'
      group by a.id`,
   );

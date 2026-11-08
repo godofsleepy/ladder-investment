@@ -42,7 +42,11 @@ interface ViewRow {
   wrong_if: string;
   signals: Signal[];
   next_review: string;
+  created_on: string;
 }
+
+const VIEW_COLS =
+  "id, short_name, area, conviction, status, view, why, wrong_if, signals, next_review, (created_at at time zone 'Asia/Jakarta')::date as created_on";
 
 const REQUIRED = ["short_name", "area", "conviction", "view", "wrong_if"] as const;
 
@@ -50,7 +54,7 @@ export async function saveMacroView(db: Db, input: SaveMacroView) {
   let current: ViewRow | undefined;
   if (input.id) {
     const { rows } = await db.query<ViewRow>(
-      "select id, short_name, area, conviction, status, view, why, wrong_if, signals, next_review from macro_views where id = $1",
+      `select ${VIEW_COLS} from macro_views where id = $1`,
       [input.id],
     );
     current = rows[0];
@@ -128,7 +132,7 @@ export async function deleteMacroView(db: Db, id: number) {
 /** Weakening and broken views first, then overdue ones, then the rest. */
 export async function getMacroViews(db: Db) {
   const { rows } = await db.query<ViewRow>(
-    "select id, short_name, area, conviction, status, view, why, wrong_if, signals, next_review from macro_views order by id",
+    `select ${VIEW_COLS} from macro_views order by id`,
   );
   const links = await db.query<{ view_id: number; asset_id: number }>("select view_id, asset_id from macro_holdings");
   const holdings = (await loadHoldings(db)).filter((h) => h.idr.qty.greaterThan(0));
