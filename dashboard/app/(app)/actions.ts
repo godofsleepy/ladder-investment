@@ -5,7 +5,7 @@ import { addNote } from "@ladder/journal";
 import { LadderError } from "@ladder/money";
 import { ignoreAlert, previewTrade, restoreAlert } from "@ladder/overview";
 import { fillAssetHistory } from "@ladder/prices/history";
-import { refreshPrices } from "@ladder/prices/refresh";
+import { ensurePrice, refreshPrices } from "@ladder/prices/refresh";
 import { linkMacroAsset, unlinkMacroAsset } from "@ladder/macro";
 import { editThesis, reviewThesis, saveThesis, type ReviewEvery } from "@ladder/thesis";
 import { logTrade, settleTrade } from "@ladder/trades";
@@ -151,10 +151,20 @@ export async function loadPriceHistoryAction(symbol: string): Promise<Result> {
   });
 }
 
-export async function linkMacroAssetAction(viewId: number, symbol: string): Promise<Result> {
+const ASSET_CLASSES: AssetClass[] = ["crypto", "us_stock", "idx_stock", "gold", "bond", "other"];
+
+export async function linkMacroAssetAction(viewId: number, symbol: string, assetClass?: string): Promise<Result> {
   return act(async (userId) => {
-    await withUser(userId, (db) => linkMacroAsset(db, viewId, symbol));
-    return `${symbol} linked`;
+    const cls = ASSET_CLASSES.find((c) => c === assetClass);
+    const linked = await withUser(userId, (db) => linkMacroAsset(db, viewId, symbol, cls)).catch((err) => {
+      if (err instanceof LadderError && err.message.startsWith("Don't know what")) {
+        throw new LadderError(`Ladder can't tell what ${symbol.trim().toUpperCase()} is. Pick its type and link again.`);
+      }
+      throw err;
+    });
+    // A ticker new to Ladder has no price yet. A failed fetch mustn't undo the link.
+    await withUser(userId, (db) => ensurePrice(db, linked.assetId)).catch(() => undefined);
+    return `${linked.symbol} linked`;
   });
 }
 

@@ -58,12 +58,12 @@ export default async function MacroViewPage({ params }: { params: Promise<{ id: 
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
           <div className="flex flex-col gap-0.5">
             <h2 id="affected" className="m-0 text-[17px] font-bold">Stocks affected</h2>
-            <span className="text-[13px] text-muted">What rides on this view. Held ones count towards its exposure.</span>
+            <span className="text-[13px] text-muted">Every stock this view moves, held or not. Held ones count towards its exposure.</span>
           </div>
           <LinkAsset viewId={v.id} options={options.filter((o) => !linked.has(o.symbol))} />
         </div>
         {v.assets.length === 0 ? (
-          <p className="m-0 border-t border-line-soft px-5 py-4 text-sm text-ink-2">No stocks linked yet. Link the ones this view would move, or tell your agent which holdings ride on it.</p>
+          <p className="m-0 border-t border-line-soft px-5 py-4 text-sm text-ink-2">No stocks linked yet. Link any ticker this view would move, owned or not, or ask your agent to.</p>
         ) : (
           <div className="overflow-x-auto">
             <div className="min-w-[860px]">

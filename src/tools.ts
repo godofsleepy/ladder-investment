@@ -8,6 +8,7 @@ import { today, assertDate } from "./dates.js";
 import { withUser, type Db, type Tx } from "./db.js";
 import { addNote, searchNotes } from "./journal.js";
 import { deleteMacroView, getMacroViews, saveMacroView } from "./macro.js";
+import { getMacroView } from "./overview.js";
 import { LadderError, parseAmount } from "./money.js";
 import { getAllocation, getNetWorth, getPortfolio } from "./portfolio.js";
 import { ensurePrice, refreshPrices, setPrice } from "./prices/refresh.js";
@@ -371,7 +372,7 @@ export function createServer({ userId, access }: Identity): McpServer {
     "save_macro_view",
     {
       description:
-        'Add a macro view, or update one by passing id. Adding needs short_name, area, conviction, view and wrong_if; an update changes only the fields you pass and keeps the rest. Example: short_name "Weak rupiah", area "Currency", view "The rupiah keeps losing ground through 2027". status is holding, weak or broken; a view past its review date shows as review due by itself. symbols lists the holdings riding on it and replaces the old list when given; leave it out to keep the links. signals also replaces the whole list when given.',
+        'Add a macro view, or update one by passing id. Adding needs short_name, area, conviction, view and wrong_if; an update changes only the fields you pass and keeps the rest. Example: short_name "Weak rupiah", area "Currency", view "The rupiah keeps losing ground through 2027". status is holding, weak or broken; a view past its review date shows as review due by itself. symbols lists the stocks this view affects, held or not, and replaces the old list when given; leave it out to keep the links. A symbol Ladder has not seen is added as an asset: give its class in asset_classes when Ladder cannot tell, e.g. {"NVDA": "us_stock"}. signals also replaces the whole list when given.',
       inputSchema: {
         id: z.number().int().optional().describe("Leave out to add a new view"),
         short_name: z.string().max(24).optional().describe("A short label for the Holdings table. Required when adding"),
@@ -385,11 +386,23 @@ export function createServer({ userId, access }: Identity): McpServer {
           .array(z.object({ kind: z.enum(["for", "against", "watch"]), text: z.string() }))
           .optional()
           .describe("Evidence for or against it, and things to watch"),
-        symbols: z.array(symbol).optional().describe("Holdings riding on this view"),
+        symbols: z.array(symbol).optional().describe("Stocks this view affects, held or not"),
+        asset_classes: z
+          .record(z.string(), assetClass)
+          .optional()
+          .describe('Class of each symbol Ladder hasn\'t seen yet, e.g. {"NVDA": "us_stock", "TSM": "us_stock"}'),
         next_review: date.optional().describe("YYYY-MM-DD. A new view defaults to 3 months from today; an update keeps its date"),
       },
     },
-    (input) => run(() => tx((db) => saveMacroView(db, input))),
+    (input) =>
+      run(async () => {
+        const saved = await tx((db) => saveMacroView(db, input));
+        // Newly added tickers have no price yet; one refresh fills them all in.
+        const missing = input.symbols?.length ? await tx((db) => getMacroView(db, saved?.id as number)).then((v) => v.assets.filter((a) => !a.price)) : [];
+        const first = missing[0];
+        if (first) await tx((db) => db.query<{ id: number }>("select id from assets where symbol = $1", [first.symbol]).then((r) => (r.rows[0] ? ensurePrice(db, r.rows[0].id) : undefined))).catch(() => undefined);
+        return saved;
+      }),
   ));
 
   write(server.registerTool(

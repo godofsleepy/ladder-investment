@@ -33,4 +33,4 @@ The source of truth is the Ladder design canvas: https://claude.ai/artifact/ThhQ
 - Position alerts add an Ignore button and an ignored list with Restore, which the canvas doesn't draw. Ignoring hides that one alert, so a new level or the next review still shows.
 - The asset page adds a Price card in the Growth chart's style, up to five years of daily closes. The canvas has no chart there.
 - Every record has a copy button showing its id. It copies a short reference such as "Ladder watchlist item #1 (META)"; the assistant reads the details through Ladder's MCP tools. Asset pages add "Copy for Claude" for the asset.
-- Each macro view has a detail page at /theses/<id>, which the canvas doesn't draw. It lists every linked stock, held or only followed, with its share of the view's exposure, and links or unlinks stocks.
+- Each macro view has a detail page at /theses/<id>, which the canvas doesn't draw. It lists every linked stock, held or not, with its share of the view's exposure. Any ticker can be linked; one new to Ladder is added as an asset.

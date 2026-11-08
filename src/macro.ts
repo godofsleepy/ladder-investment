@@ -1,4 +1,4 @@
-import { findAsset } from "./assets.js";
+import { ensureAsset, type AssetClass } from "./assets.js";
 import { addMonths, assertDate, today } from "./dates.js";
 import type { Db } from "./db.js";
 import { Decimal, idr, LadderError, pct } from "./money.js";
@@ -21,9 +21,15 @@ export interface SaveMacroView {
   why?: string;
   wrong_if?: string;
   signals?: Signal[];
+  /** Any ticker, held or not. One Ladder hasn't seen yet is added as an asset. */
   symbols?: string[];
+  /** The class of a symbol Ladder can't infer, e.g. { NVDA: "us_stock" }. */
+  asset_classes?: Record<string, AssetClass>;
   next_review?: string;
 }
+
+const classFor = (classes: Record<string, AssetClass> | undefined, symbol: string) =>
+  classes?.[symbol] ?? classes?.[symbol.trim().toUpperCase()];
 
 interface ViewRow {
   id: number;
@@ -58,8 +64,7 @@ export async function saveMacroView(db: Db, input: SaveMacroView) {
     : (current?.next_review ?? addMonths(today(), 3));
   const assetIds: number[] = [];
   for (const symbol of input.symbols ?? []) {
-    const asset = await findAsset(db, symbol);
-    if (!asset) throw new LadderError(`No asset called ${symbol} yet. A macro view can only link holdings Ladder knows.`);
+    const asset = await ensureAsset(db, symbol, { asset_class: classFor(input.asset_classes, symbol) });
     assetIds.push(asset.id);
   }
   const values = [
@@ -100,12 +105,13 @@ async function requireView(db: Db, id: number): Promise<void> {
   if (!rowCount) throw new LadderError(`No macro view ${id}`);
 }
 
-/** Adds one asset to a view, held or not, keeping the others. */
-export async function linkMacroAsset(db: Db, viewId: number, symbol: string): Promise<void> {
+/** Adds one ticker to a view, keeping the others. It needn't be held, or known to Ladder yet. */
+export async function linkMacroAsset(db: Db, viewId: number, symbol: string, assetClass?: AssetClass): Promise<{ assetId: number; symbol: string }> {
   await requireView(db, viewId);
-  const asset = await findAsset(db, symbol);
-  if (!asset || asset.class === "fx") throw new LadderError(`No asset called ${symbol} yet. A macro view can only link assets Ladder knows.`);
+  if (!symbol.trim()) throw new LadderError("Type a ticker to link");
+  const asset = await ensureAsset(db, symbol, { asset_class: assetClass });
   await db.query("insert into macro_holdings (view_id, asset_id) values ($1,$2) on conflict do nothing", [viewId, asset.id]);
+  return { assetId: asset.id, symbol: asset.symbol };
 }
 
 export async function unlinkMacroAsset(db: Db, viewId: number, symbol: string): Promise<void> {

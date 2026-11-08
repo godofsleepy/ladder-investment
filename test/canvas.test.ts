@@ -142,7 +142,7 @@ describe("macro views", () => {
   });
 
   it("refuses to link an asset Ladder doesn't know", async () => {
-    await expect(call(mcp, "save_macro_view", { short_name: "X", area: "Y", conviction: "Low", view: "v", wrong_if: "w", symbols: ["NOPE"] })).rejects.toThrow(/No asset/);
+    await expect(call(mcp, "save_macro_view", { short_name: "X", area: "Y", conviction: "Low", view: "v", wrong_if: "w", symbols: ["NOPE"] })).rejects.toThrow(/Don't know what NOPE is/);
   });
 
   it("shows a view past its date as review due, and problem views first", async () => {
@@ -500,8 +500,19 @@ describe("macro view detail", () => {
     await w((db) => unlinkMacroAsset(db, view.id, "BBRI.JK"));
     expect((await w((db) => getMacroView(db, view.id))).assets.map((a) => a.symbol)).toEqual(["BBCA.JK", "BMRI.JK"]);
 
-    await expect(w((db) => linkMacroAsset(db, view.id, "NOPE"))).rejects.toThrow("No asset called NOPE");
-    await expect(w((db) => linkMacroAsset(db, view.id, "USDIDR"))).rejects.toThrow("No asset called");
+    await expect(w((db) => linkMacroAsset(db, view.id, "NOPE"))).rejects.toThrow("Don't know what NOPE is");
+    await expect(w((db) => linkMacroAsset(db, view.id, "USDIDR"))).rejects.toThrow("shared exchange rate");
+
+    // A ticker that isn't held, or even known yet, can still be linked.
+    await w((db) => linkMacroAsset(db, view.id, "nvda", "us_stock"));
+    const withNvda = await w((db) => getMacroView(db, view.id));
+    expect(withNvda.assets.find((a) => a.symbol === "NVDA")).toMatchObject({ class: "us_stock", currency: "USD", position: null, share_pct: null });
+    expect(withNvda.exposure_idr).toBe("900000.00");
+
+    const viaTool = await call(client, "save_macro_view", { id: view.id, symbols: ["BBCA.JK", "TSM", "ANTM"], asset_classes: { TSM: "us_stock", ANTM: "idx_stock" } });
+    expect(viaTool.symbols).toEqual(["BBCA.JK"]);
+    expect((await w((db) => getMacroView(db, view.id))).assets.map((a) => a.symbol)).toEqual(["BBCA.JK", "ANTM.JK", "TSM"]);
+    await expect(call(client, "save_macro_view", { id: view.id, symbols: ["AVGO"] })).rejects.toThrow(/Don't know what AVGO is/);
     await expect(withUser(other.id, (db) => getMacroView(db, view.id))).rejects.toThrow(`No macro view ${view.id}`);
     await expect(withUser(other.id, (db) => linkMacroAsset(db, view.id, "BBCA.JK"))).rejects.toThrow("No macro view");
     await expect(withUser(other.id, (db) => unlinkMacroAsset(db, view.id, "BBCA.JK"))).rejects.toThrow("No macro view");
