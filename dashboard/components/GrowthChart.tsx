@@ -150,8 +150,7 @@ export function GrowthChart({ points, symbols, base }: { points: Point[]; symbol
   const gainFrom = fromPoint ? gainOf(fromPoint) : 0;
   const gainTo = toPoint ? gainOf(toPoint) : 0;
   const gainDiff = gainTo - gainFrom;
-  const maxInvested = fromPoint && toPoint ? Math.max(fromPoint.invested, toPoint.invested) : 0;
-  const gainDiffPct = maxInvested > 0 ? (gainDiff / maxInvested) * 100 : null;
+  const gainDiffPct = gainFrom !== 0 ? (gainDiff / Math.abs(gainFrom)) * 100 : null;
 
   // Single-asset compare mode (e.g. only NVDA checked) also gets a rich floating delta pill.
   const singleLine = compare && lines.length === 1 ? lines[0] : null;
