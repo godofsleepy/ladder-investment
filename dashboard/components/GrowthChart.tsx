@@ -150,6 +150,8 @@ export function GrowthChart({ points, symbols, base }: { points: Point[]; symbol
   const gainFrom = fromPoint ? gainOf(fromPoint) : 0;
   const gainTo = toPoint ? gainOf(toPoint) : 0;
   const gainDiff = gainTo - gainFrom;
+  const maxInvested = fromPoint && toPoint ? Math.max(fromPoint.invested, toPoint.invested) : 0;
+  const gainDiffPct = maxInvested > 0 ? (gainDiff / maxInvested) * 100 : null;
 
   // Single-asset compare mode (e.g. only NVDA checked) also gets a rich floating delta pill.
   const singleLine = compare && lines.length === 1 ? lines[0] : null;
@@ -159,7 +161,7 @@ export function GrowthChart({ points, symbols, base }: { points: Point[]; symbol
   const singleDiffPct = singleDiff !== null && singleFrom && singleFrom > 0 ? (singleDiff / singleFrom) * 100 : null;
 
   const rangeDiff = gainOnly ? gainDiff : portfolioOnly ? valDiff : singleDiff;
-  const rangeDiffPct = portfolioOnly ? valDiffPct : singleLine ? singleDiffPct : null;
+  const rangeDiffPct = gainOnly ? gainDiffPct : portfolioOnly ? valDiffPct : singleLine ? singleDiffPct : null;
   const rangeUp = (rangeDiff ?? 0) >= 0;
 
   const formatTick = (v: number) => {
@@ -265,7 +267,7 @@ export function GrowthChart({ points, symbols, base }: { points: Point[]; symbol
                     const v1 = line.values[rangeFromIdx] ?? null;
                     const v2 = line.values[rangeToIdx] ?? null;
                     const diff = v1 !== null && v2 !== null ? v2 - v1 : null;
-                    const diffPct = !isGain && diff !== null && v1 !== null && v1 > 0 ? (diff / v1) * 100 : null;
+                    const diffPct = isGain ? gainDiffPct : (diff !== null && v1 !== null && v1 > 0 ? (diff / v1) * 100 : null);
                     return (
                       <span key={line.id} className="inline-flex items-center gap-2 text-sm">
                         <span aria-hidden="true" className="h-[3px] w-4 rounded-sm" style={{ background: colorOf(line.id) }} />
@@ -295,7 +297,7 @@ export function GrowthChart({ points, symbols, base }: { points: Point[]; symbol
                 <div className="flex flex-col gap-0.5">
                   <span className="text-xs text-muted">{fd(fromPoint.date)} – {fd(toPoint.date)} · gain change</span>
                   <span className={`text-[22px] font-bold tracking-[-0.4px] tabular-nums ${gainDiff < 0 ? "text-bad" : "text-good"}`}>
-                    {signed(gainDiff)}
+                    {signed(gainDiff)}{gainDiffPct !== null ? ` (${pct1(gainDiffPct)})` : ""}
                   </span>
                 </div>
                 <div className="flex flex-col gap-0.5">
